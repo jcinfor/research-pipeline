@@ -1,0 +1,62 @@
+[project]
+name = "research-pipeline"
+version = "0.1.0"
+description = "Scientific research pipeline: per-user Karpathy wiki + multi-agent simulation."
+requires-python = ">=3.12"
+readme = "README.md"
+license = { text = "MIT" }
+dependencies = [
+    "openai>=1.40",
+    "httpx>=0.27",
+    "pydantic>=2.7",
+    "fastapi>=0.110",
+    "uvicorn[standard]>=0.29",
+    "typer>=0.12",
+    "rich>=13.7",
+    "tomli>=2.0; python_version<'3.11'",
+    "platformdirs>=4.0",
+]
+
+[project.optional-dependencies]
+sim = ["camel-oasis"]
+ingest = ["markitdown[pdf,docx,pptx,xlsx]>=0.0.1"]
+dev = [
+    "mem0ai>=2.0.0",
+    "mflow-ai>=0.3.6",
+    "ollama>=0.6.1",
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+    "ruff>=0.4",
+    "supermemory>=3.35.0",
+    "zep-cloud>=3.20.0",
+]
+
+[project.scripts]
+rp = "research_pipeline.cli:app"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/research_pipeline"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+pythonpath = ["."]
+
+# Pin mem0ai to a local editable clone of mem0 mainline for the `dev` extra.
+# This is what produces the `mem0_real_v3` benchmark numbers in BENCHMARKS.md
+# (PyPI's mem0ai==2.0.0 ships the v2 algorithm; v3 lives only on git mainline
+# as of 2026-04-29). Reproducer recipe: clone mem0 to ../mem0, check out the
+# v3-ship commit (we ran 693e709389526b45cfadfd06d89a0e13af7c7345 ≈ "693e7093"),
+# then `uv sync --extra dev`. To benchmark mem0 v2 instead, drop this block
+# (or override with `uv pip install mem0ai==2.0.0` after sync) and re-run with
+# `--only-systems mem0_real`. See BENCHMARKS.md → Reproducing v3 vs v2.
+[tool.uv.sources]
+mem0ai = { path = "../mem0", editable = true }

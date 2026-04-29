@@ -1,0 +1,31 @@
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+dist/
+build/
+*.db
+*.sqlite
+poc/oasis_poc.db
+.env
+models.toml
+
+# Internal-only docs (launch readiness, retrospectives, internal migration notes,
+# pivot/idea-brief drafts). Kept locally for project history; not part of the
+# public release.
+docs/internal/
+
+# Runtime artifacts: per-run logs, project working dirs, OASIS state databases,
+# CSV agent profiles, export bundles. Public repo ships only the canonical
+# benchmark result files under benchmarks/<name>/results/ and project artifacts
+# under projects/project_<id>/artifacts/.
+log/
+exports/
+runs/
+research_pipeline.db
+
+# Personal docs that occasionally land in the working dir (CVs, etc.) — never
+# part of the source tree.
+*.docx
