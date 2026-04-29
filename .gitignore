@@ -10,7 +10,9 @@ build/
 *.sqlite
 poc/oasis_poc.db
 .env
-models.toml
+# Only the root-level models.toml is local-only — poc/models.toml is the
+# tracked template that contributors `cp` from (per CONTRIBUTING.md).
+/models.toml
 
 # Internal-only docs (launch readiness, retrospectives, internal migration notes,
 # pivot/idea-brief drafts). Kept locally for project history; not part of the
