@@ -148,6 +148,32 @@ _MIGRATIONS = (
     # doubt). Default keeps existing rows defensibly EXTRACTED so the
     # field is non-NULL and code can assume a value is always present.
     "ALTER TABLE blackboard_entries ADD COLUMN confidence TEXT NOT NULL DEFAULT 'EXTRACTED'",
+    # MCP server phase 2.1 — async-job tracking. The MCP server's
+    # rp_run_simulation / rp_run_optimize / rp_synthesize tools (phase
+    # 2.2-2.3) submit work here and return a job_id immediately; the
+    # rp_get_status tool polls this table for progress. pid is the OS
+    # pid that owns the job so server restarts can detect orphaned
+    # 'running' rows. Single active job per project is enforced at
+    # submission time (see jobs.py::JobManager.submit).
+    """
+    CREATE TABLE IF NOT EXISTS jobs (
+        job_id        TEXT PRIMARY KEY,
+        project_id    INTEGER NOT NULL REFERENCES projects(id),
+        kind          TEXT NOT NULL,
+        status        TEXT NOT NULL,
+        args_json     TEXT NOT NULL DEFAULT '{}',
+        progress_pct  REAL NOT NULL DEFAULT 0,
+        current_step  TEXT,
+        result_json   TEXT,
+        error         TEXT,
+        created_at    TEXT NOT NULL DEFAULT (datetime('now')),
+        started_at    TEXT,
+        completed_at  TEXT,
+        pid           INTEGER NOT NULL DEFAULT 0
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS ix_jobs_project_status ON jobs(project_id, status)",
+    "CREATE INDEX IF NOT EXISTS ix_jobs_status ON jobs(status)",
 )
 
 
