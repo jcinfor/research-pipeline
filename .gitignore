@@ -31,3 +31,8 @@ research_pipeline.db
 # Personal docs that occasionally land in the working dir (CVs, etc.) — never
 # part of the source tree.
 *.docx
+
+# Claude Code per-user settings (permission grants etc.) — local-only.
+# .claude/skills/ and .claude/agents/ are intentionally tracked; only
+# settings.local.json is per-user.
+.claude/settings.local.json

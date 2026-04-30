@@ -8,9 +8,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
 ## [0.2.0] — 2026-04-30
 
-Adds an MCP server for `rp`. The pipeline is now drivable from Claude Code, OpenCode, OpenClaw, Cline, Cursor, Goose, or any MCP-aware client — your local stack, your LLM endpoints, your data. See [docs/integrations/mcp-server.md](docs/integrations/mcp-server.md) for the registration recipe.
+Adds two new distribution surfaces for `rp`:
 
-> **Terminology note.** This release ships an *MCP server* — a server speaking the Model Context Protocol so MCP clients can call rp's tools. It is *not* a Claude Skill (Anthropic's packaged-capability format with `SKILL.md` and instructions). A Skill wrapping the MCP server is on the roadmap.
+1. An **MCP server** so any MCP-aware client (Claude Code, OpenCode, OpenClaw, Cline, Cursor, Goose) can drive the pipeline directly. See [docs/integrations/mcp-server.md](docs/integrations/mcp-server.md) for the registration recipe.
+2. A **Claude Skill** at [`.claude/skills/rp/`](.claude/skills/rp/) so Claude Code agents working in this repo (or with the skill installed user-wide at `~/.claude/skills/rp/`) get pre-baked methodology — when to invoke the rp tools, the canonical workflow, and how to present the five artifacts back to the user.
+
+The MCP server gives the agent *access* to rp's tools; the Skill gives it *methodology* for when and how to use them. They're complementary; both ship in v0.2.0.
+
+> **Terminology note.** MCP is the open Model Context Protocol; "Claude Skill" is Anthropic's packaged-capability format (`SKILL.md` + instructions). They're distinct things — earlier drafts of this changelog conflated them.
 
 ### Added
 
@@ -20,6 +25,9 @@ Adds an MCP server for `rp`. The pipeline is now drivable from Claude Code, Open
   - `rp_ingest` — convert + chunk + embed a document into a project's blackboard.
   - `rp_status` — full project state including blackboard counts and which artifacts are on disk.
   - `rp_get_artifacts` — fetch synthesized artifact bodies inline (markdown).
+- [.claude/skills/rp/SKILL.md](.claude/skills/rp/SKILL.md) — project-scoped Claude Skill teaching the agent when to reach for rp, the canonical workflow, the artifact-presentation pattern, and what *not* to do (e.g. don't burn 30 minutes on a multi-agent simulation when the user just wants a quick summary).
+- [.claude/skills/rp/examples/canonical-flow.md](.claude/skills/rp/examples/canonical-flow.md) — worked example: user uploads three papers, gets a hypothesis matrix.
+- [.claude/skills/rp/examples/resume-existing-project.md](.claude/skills/rp/examples/resume-existing-project.md) — worked example: resuming a prior project with a new paper.
 - [docs/integrations/mcp-server.md](docs/integrations/mcp-server.md) — Claude Code registration recipe, troubleshooting, what's coming in v0.3.0.
 - 12 tests under `tests/test_mcp_server.py` covering tool registration, the round-trips, validation errors, and the on-disk artifact discovery path.
 

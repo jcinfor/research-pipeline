@@ -104,7 +104,20 @@ Then ask the agent: *"Create a new rp project for analyzing X. Ingest these thre
 
 Long-running tools (`rp_run_simulation`, `rp_run_optimize`, `rp_synthesize`) ship in v0.3.0 with the async/job-id pattern; for now run those via the CLI from a separate terminal. See [docs/integrations/mcp-server.md](docs/integrations/mcp-server.md) for the full registration recipe and troubleshooting.
 
-A Claude Skill wrapping the MCP server (so the agent gets pre-baked instructions on when/how to use the tools, not just access to them) is on the roadmap — see [docs/integrations/skill.md](docs/integrations/skill.md) when it lands.
+### Also installable as a Claude Skill
+
+A project-scoped Claude Skill ships at [`.claude/skills/rp/SKILL.md`](.claude/skills/rp/SKILL.md). When you have this repo open in Claude Code, the skill is picked up automatically — your agent gets pre-baked instructions on *when* to reach for the rp tools (and when not to), the canonical workflow (list → create → ingest → run → synthesize → get artifacts), and how to present the five artifacts back to the user.
+
+To install it user-wide (so it's available across every Claude Code session, not just this repo):
+
+```bash
+mkdir -p ~/.claude/skills/rp
+cp -r .claude/skills/rp/* ~/.claude/skills/rp/
+```
+
+Two worked examples ship alongside the skill at [`.claude/skills/rp/examples/`](.claude/skills/rp/examples/) — the canonical "user uploads three papers, get a hypothesis matrix" flow, and the "resume an existing project" flow.
+
+The Skill complements the MCP server: MCP gives the agent *access* to rp's tools; the Skill gives the agent *methodology* for when and how to use them. Both are valuable; they answer different questions.
 
 ---
 
