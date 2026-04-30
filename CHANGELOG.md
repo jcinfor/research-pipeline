@@ -8,7 +8,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
 ## [0.2.0] — 2026-04-30
 
-Ships `rp` as an MCP skill. The pipeline is now drivable from Claude Code, OpenCode, OpenClaw, Cline, Cursor, Goose, or any MCP-aware client — your local stack, your LLM endpoints, your data. See [docs/integrations/mcp-server.md](docs/integrations/mcp-server.md) for the registration recipe.
+Adds an MCP server for `rp`. The pipeline is now drivable from Claude Code, OpenCode, OpenClaw, Cline, Cursor, Goose, or any MCP-aware client — your local stack, your LLM endpoints, your data. See [docs/integrations/mcp-server.md](docs/integrations/mcp-server.md) for the registration recipe.
+
+> **Terminology note.** This release ships an *MCP server* — a server speaking the Model Context Protocol so MCP clients can call rp's tools. It is *not* a Claude Skill (Anthropic's packaged-capability format with `SKILL.md` and instructions). A Skill wrapping the MCP server is on the roadmap.
 
 ### Added
 

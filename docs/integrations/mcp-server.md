@@ -2,7 +2,9 @@
 
 `rp` v0.2.0+ ships an MCP server that exposes the research pipeline as five tools any MCP-aware agent can call. Claude Code, OpenCode, Cline, Cursor, Goose — anything that speaks MCP can drive `rp project create / ingest / status / get-artifacts` from inside your agent conversation.
 
-This is the "skill" surface, complementing the CLI and the dashboard. It runs locally — your stack, your LLM endpoints, your data — same as the rest of `rp`.
+This is the MCP surface, complementing the CLI and the dashboard. It runs locally — your stack, your LLM endpoints, your data — same as the rest of `rp`.
+
+> **MCP server vs Claude Skill — the distinction.** This page is about the **MCP server** (`rp mcp serve`). Anthropic's *Skills* are a separate packaged-capability format (`SKILL.md` + instructions). A Skill *wrapping* the MCP server — adding pre-baked instructions on when and how to use the tools — is on the roadmap. The MCP server is fully usable on its own; the Skill is an additive convenience layer.
 
 ## What you can do
 
