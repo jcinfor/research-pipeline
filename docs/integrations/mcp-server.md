@@ -15,19 +15,42 @@ After registering, your agent can:
 - *"Show me the status of project 4."*
 - *"What did the synthesizer produce for project 4?"*
 
-The agent calls `rp_create_project`, `rp_ingest`, `rp_get_status`, `rp_get_artifacts` directly — no shell commands needed.
+The agent calls `rp_create_project`, `rp_ingest`, `rp_run_simulation`, `rp_get_status`, `rp_get_artifacts` directly — no shell commands needed. Long-running ops use the async job-id pattern (submit returns immediately, agent polls `rp_get_status` until terminal).
 
-> **Phase 1 scope.** This release ships the five fast / synchronous tools. Long-running operations (`rp_run_simulation`, `rp_run_optimize`, `rp_synthesize`) ship in v0.3.0 with the async/job-id pattern that handles the 30-60s MCP client timeout. For now, run those via the CLI from a separate terminal.
+## Tools shipped (v0.3.0+)
 
-## Tools shipped (phase 1)
+### Sync tools (return immediately)
 
 | Tool | What it does | Latency |
 |---|---|---|
 | `rp_list_projects` | List projects with id, goal, status, archetypes | <100ms |
 | `rp_create_project` | Create a project with goal + archetype list | <500ms |
 | `rp_ingest` | Convert + chunk + embed a document into a project | 5-30s typical |
-| `rp_get_status` | Full state for one project — counts, last activity, artifacts available | <100ms |
+| `rp_get_status` | Full state for one project — counts, last activity, artifacts available, **active job + recent jobs** | <100ms |
 | `rp_get_artifacts` | Fetch synthesized artifact bodies inline | <500ms |
+
+### Async tools (return `job_id`; poll `rp_get_status` to track)
+
+| Tool | What it does | Wall time |
+|---|---|---|
+| `rp_run_simulation` | Start a simulation. Args: `turns` (default 3), `reddit_every` (default 0). | 5-30 min |
+| `rp_run_optimize` | Start the optimization loop. Args: `iterations` (default 3), `turns_per` (default 2), `objective` (`'rubric'` or `'pgr'`), `plateau_patience` (default 2). | 10-60 min |
+| `rp_synthesize` | Produce the five structured artifacts (claims/hypotheses/experiments/decision/risks). | 1-3 min |
+
+**Concurrency invariant.** Only one active job per project at a time, regardless of kind. A simulation in flight blocks new submissions of optimize and synthesize too. Submitting a second job for the same project returns `{error: 'project_in_use', active_job_id, ...}` instead of a `job_id` — the agent should poll the active job's status, not stack submissions.
+
+### Polling pattern
+
+```
+1. submit  → rp_run_simulation(project_id=X, turns=3) → {job_id: "...", status: "queued"}
+2. wait    → ~30s
+3. poll    → rp_get_status(project_id=X) → {active_job: {status: "running", current_step: "...", progress_pct: 5.0}, ...}
+4. wait    → 60-120s
+5. poll    → rp_get_status(project_id=X) → {active_job: null, recent_jobs: [{status: "complete", result: {...}}]}
+6. fetch   → rp_get_artifacts(project_id=X)
+```
+
+The Claude Skill ([`.claude/skills/rp/SKILL.md`](../../.claude/skills/rp/SKILL.md)) teaches the agent the right cadence (don't busy-loop within a single response turn; spread polls across conversation turns) and how to handle terminal-state edge cases (`failed`, `orphaned`).
 
 ## Register with Claude Code
 
@@ -80,13 +103,12 @@ In a fresh Claude Code session, ask:
 
 The agent should call `rp_list_projects`, then `rp_create_project`, and report the new project id. Run `uv run rp project list` from a terminal to confirm it landed in the same database the CLI uses.
 
-## Coming in v0.3.0
+## Coming in v0.4.0
 
-- `rp_run_simulation` — start a simulation as a background job; returns job_id for polling
-- `rp_run_optimize` — same async pattern for the optimization loop
-- `rp_synthesize` — produce the artifact bundle (sync if fast enough, async otherwise)
-- `rp_get_status` extended to surface running jobs with progress
-- Resource URIs (`rp://projects/{id}/artifacts/{name}`) for clients that prefer URI fetches over inline content
+- Resource URIs (`rp://projects/{id}/artifacts/{name}`) for clients that prefer URI fetches over inline content.
+- SSE progress streaming for clients that support it (richer than poll-based — agent gets notified on transition rather than discovering it via poll).
+- Per-project `delete` tool with audit-log preservation.
+- Turn-level progress reporting from inside the simulation loop (current Phase 2 ships coarse `queued → running → complete`; v0.4.0 adds `current_step="turn 2/3 — Critic agent"` granularity).
 
 ## Troubleshooting
 

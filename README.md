@@ -90,19 +90,20 @@ claude mcp add rp --scope user -- uv --directory \
     /absolute/path/to/research-pipeline run rp mcp serve
 ```
 
-After restart, a fresh Claude Code session has these tools available:
+After restart, a fresh Claude Code session has all 8 tools available — 5 sync + 3 async (job-id polling pattern):
 
-| Tool | What it does |
-|---|---|
-| `rp_list_projects` | List projects with id, goal, status, archetypes |
-| `rp_create_project` | Create with goal + archetypes |
-| `rp_ingest` | Convert + chunk + embed a document into a project |
-| `rp_get_status` | Full project state (counts, last activity, artifacts available) |
-| `rp_get_artifacts` | Fetch synthesized artifacts inline |
+| Tool | Sync/Async | What it does |
+|---|---|---|
+| `rp_list_projects` | sync | List projects with id, goal, status, archetypes |
+| `rp_create_project` | sync | Create with goal + archetypes |
+| `rp_ingest` | sync (5-30s) | Convert + chunk + embed a document into a project |
+| `rp_get_status` | sync | Full project state + active/recent jobs |
+| `rp_get_artifacts` | sync | Fetch synthesized artifacts inline |
+| `rp_run_simulation` | **async** | Start a simulation; returns `job_id` (v0.3.0+) |
+| `rp_run_optimize` | **async** | Start the optimization loop; returns `job_id` (v0.3.0+) |
+| `rp_synthesize` | **async** | Produce the five artifacts; returns `job_id` (v0.3.0+) |
 
-Then ask the agent: *"Create a new rp project for analyzing X. Ingest these three PDFs. Tell me what got produced."* — that's the whole thing.
-
-Long-running tools (`rp_run_simulation`, `rp_run_optimize`, `rp_synthesize`) ship in v0.3.0 with the async/job-id pattern; for now run those via the CLI from a separate terminal. See [docs/integrations/mcp-server.md](docs/integrations/mcp-server.md) for the full registration recipe and troubleshooting.
+Then ask the agent: *"Create a new rp project for analyzing X. Ingest these three PDFs. Run the simulation and tell me what got produced."* — the agent submits the simulation as a background job, polls progress, and surfaces the result when complete. See [docs/integrations/mcp-server.md](docs/integrations/mcp-server.md) for the full registration recipe and the polling cadence the Skill teaches.
 
 ### Also installable as a Claude Skill
 

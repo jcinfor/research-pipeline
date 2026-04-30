@@ -6,6 +6,49 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
 ## [Unreleased]
 
+## [0.3.0] — TBD
+
+Closes the v0.3.0 plan from [docs/internal/rp-mcp-server-plan.md](docs/internal/rp-mcp-server-plan.md): the rp MCP server now exposes the **full pipeline** as MCP tools, with the long-running operations (simulation, optimize, synthesize) routed through an async job-id pattern that handles MCP client timeouts cleanly. The agent can now drive *ingest → run_simulation → run_optimize → synthesize → get_artifacts* without leaving the conversation, polling `rp_get_status` between async stages.
+
+### Added — three new async MCP tools
+
+- `rp_run_simulation` — start a simulation as a background job. Returns `{job_id, status: 'queued'}` immediately. Args: `turns` (default 3), `reddit_every` (default 0).
+- `rp_run_optimize` — start the optimization loop. Returns `{job_id, status: 'queued'}` immediately. Args: `iterations` (default 3), `turns_per` (default 2), `objective` (`'rubric'` | `'pgr'`, default `'rubric'`), `plateau_patience` (default 2).
+- `rp_synthesize` — produce the five structured artifacts. Returns `{job_id, status: 'queued'}` immediately. Single arg: `project_id`.
+
+All three follow the same shape: synchronous pre-check (project exists + agents assigned + valid args), structured `{error: 'project_in_use', active_job_id, hint}` response when concurrency-forbid trips, otherwise `{job_id, ...}` returned within ~100ms while the runner executes in the background.
+
+### Added — `rp_get_status` extended
+
+`rp_get_status` now surfaces job state alongside the existing project state:
+
+- `active_job`: the current queued/running job for this project, with progress fields (`current_step`, `progress_pct`) — or `null` if idle.
+- `recent_jobs`: up to 5 most-recent jobs (any status), newest first.
+
+The agent's polling pattern: submit async job → poll `rp_get_status(project_id)` → when `active_job.status` is terminal (`complete`/`failed`/`cancelled`/`orphaned`), proceed.
+
+### Added — async-job infrastructure
+
+- `src/research_pipeline/jobs.py` — standalone `JobManager` + `ProgressReporter` + SQLite-backed persistence. In-process asyncio task tracking; concurrency invariant enforced at submission (one active job per project); orphan cleanup at server start (stale `running` rows from prior process pids get marked `orphaned`).
+- `jobs` table added to schema with indexes on `(project_id, status)` and `(status)`.
+- 18 tests under `tests/test_jobs.py` pinning the defining invariants: monotonic status transitions, concurrency-forbid, sync-in-db cancellation (status set BEFORE task.cancel() so racing progress updates can't undo it), orphan cleanup, shutdown-orphans-running-tasks.
+
+### Updated — Skill body teaches the async pattern
+
+[.claude/skills/rp/SKILL.md](.claude/skills/rp/SKILL.md) now teaches the agent the polling cadence (~30s first check, then every 60-120s, surface meaningful transitions only, don't busy-loop in a single response turn) and how to handle terminal-state edge cases (failed → surface error verbatim and offer retry; orphaned → ask user before re-submitting). The "two-mode" section now explicitly recommends MCP for the async ops since the shell fallback blocks the conversation.
+
+### Notes
+
+- Concurrency invariant is **project-level, not kind-level**: a simulation in flight blocks both optimize AND synthesize submissions for the same project. Tested in both directions across all three async tools.
+- Module-level imports of `simulation`, `optimize`, `synthesize` use the `from . import X` pattern (not `from .X import f`) so test monkey-patches on `mcp_server.X.f` take effect at runner-call time.
+- 321 fast tests pass (was 293 in v0.2.0). 5 phase-2.2 tests + 5 phase-2.3 tests + 18 phase-2.1 jobs tests added.
+
+### Coming in v0.4.0
+
+- Resource URIs (`rp://projects/{id}/artifacts/{name}`) for clients that prefer URI-based fetches.
+- SSE progress streaming for clients that support it (richer than poll-based).
+- Per-project `delete` tool with audit-log preservation.
+
 ## [0.2.0] — 2026-04-30
 
 Adds two new distribution surfaces for `rp`:
