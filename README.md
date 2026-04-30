@@ -18,7 +18,9 @@ All in SQLite. No vector DB, no graph DB, no separate services. MIT licensed.
 
 ## Why this exists
 
-Most agent demos produce prose summaries. We wanted artifacts a researcher can actually act on — claims you can falsify, experiments you can run, decisions with predicted outcomes — and a way to make the agent team *measurably better* across runs rather than running once and shipping.
+Scientific research is not a linear process. Claims contradict each other, hypotheses get revised under new evidence, and the conclusions worth keeping are the ones that survived being argued with. Most agent demos produce prose summaries that flatten all of that productive disagreement into one polished narrative — but a summary is the wrong artifact if you actually want to act on the work.
+
+We wanted artifacts that preserve the structure of disagreement: claims you can falsify, hypotheses with explicit state transitions (including the ones that got refuted), experiments you can run, decisions with predicted outcomes, and a risks register that surfaces what *almost* derailed the conclusion. And a way to make the agent team *measurably better* across runs rather than running once and shipping.
 
 The architectural through-line is a **three-tier memory model** the pipeline uses internally and exposes for benchmarking:
 
