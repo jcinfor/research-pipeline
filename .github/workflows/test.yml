@@ -14,15 +14,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Clone mem0 mainline (sibling path required by uv.sources pin)
-        # pyproject.toml pins mem0ai to ../mem0 so the `mem0_real_v3` benchmark
-        # numbers in BENCHMARKS.md are reproducible from a clean checkout. We
-        # don't pin a specific commit here — CI is intentionally tracking
-        # mainline so a mem0 release that breaks the adapter will turn the
-        # badge red. The published benchmark numbers were captured against
-        # 693e7093 (see pyproject.toml comment).
-        run: git clone --depth 1 https://github.com/mem0ai/mem0.git ../mem0
-
       - name: Install uv
         uses: astral-sh/setup-uv@v3
         with:

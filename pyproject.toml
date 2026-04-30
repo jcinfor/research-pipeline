@@ -51,13 +51,18 @@ testpaths = ["tests"]
 asyncio_mode = "auto"
 pythonpath = ["."]
 
-# Pin mem0ai to a local editable clone of mem0 mainline for the `dev` extra.
-# This is what produces the `mem0_real_v3` benchmark numbers in BENCHMARKS.md
-# (PyPI's mem0ai==2.0.0 ships the v2 algorithm; v3 lives only on git mainline
-# as of 2026-04-29). Reproducer recipe: clone mem0 to ../mem0, check out the
-# v3-ship commit (we ran 693e709389526b45cfadfd06d89a0e13af7c7345 ≈ "693e7093"),
-# then `uv sync --extra dev`. To benchmark mem0 v2 instead, drop this block
-# (or override with `uv pip install mem0ai==2.0.0` after sync) and re-run with
-# `--only-systems mem0_real`. See BENCHMARKS.md → Reproducing v3 vs v2.
-[tool.uv.sources]
-mem0ai = { path = "../mem0", editable = true }
+# mem0ai install: PyPI's mem0ai==2.0.0 already ships the v3 algorithm
+# (forensically verified — see docs/mem0-version-forensics.md). Default
+# install resolves to PyPI for clean fresh-clone UX. To pin against the
+# git mainline build (74-line patch delta from PyPI 2.0.0; produces the
+# `mem0_real_v3` rows in BENCHMARKS.md), uncomment the block below after
+# cloning mem0 to ../mem0 and checking out the desired commit:
+#
+#   git clone https://github.com/mem0ai/mem0.git ../mem0
+#   ( cd ../mem0 && git checkout 693e7093 )
+#   # then uncomment [tool.uv.sources] below and re-run uv sync
+#
+# See BENCHMARKS.md → "Reproducing the two configurations" for context.
+#
+# [tool.uv.sources]
+# mem0ai = { path = "../mem0", editable = true }
