@@ -27,13 +27,15 @@ from typing import Any
 
 from mcp.server.fastmcp import FastMCP
 
-from . import simulation  # imported as module for monkey-patching in tests
+from . import optimize, simulation, synthesize  # module-level for test monkey-patching
 from .adapter import LLMClient
 from .archetypes import PHASE_1_SUBSET, ROSTER, by_id
 from .db import connect, init_db
 from .ingest import ingest_file
 from .jobs import (
+    KIND_OPTIMIZE,
     KIND_SIMULATION,
+    KIND_SYNTHESIZE,
     Job,
     JobManager,
     ProgressReporter,
@@ -361,6 +363,193 @@ def build_server() -> FastMCP:
             "status": "queued",
             "args": {"turns": turns, "reddit_every": reddit_every},
             "hint": "poll rp_get_status(project_id) until active_job.status == 'complete'",
+        }
+
+    @mcp.tool()
+    def rp_run_optimize(
+        project_id: int,
+        iterations: int = 3,
+        turns_per: int = 2,
+        objective: str = "rubric",
+        plateau_patience: int = 2,
+    ) -> dict[str, Any]:
+        """Start the optimization loop as a background job. Each iteration:
+        runs a short simulation (`turns_per` turns), scores agents on the
+        6-dim rubric, identifies the weakest agent + dimension, applies a
+        targeted config adjustment, records the trace.
+
+        Returns IMMEDIATELY with {job_id, status: 'queued'}. Poll
+        rp_get_status(project_id) until active_job.status == 'complete'.
+
+        Concurrency: only ONE active job per project. If project_id has a
+        queued/running simulation, optimize, or synthesize job, this
+        returns {error: 'project_in_use', active_job_id, ...}.
+
+        Arguments:
+          iterations: max iterations (default 3). Loop terminates earlier
+            on plateau (no rubric improvement above threshold for
+            `plateau_patience` consecutive iterations).
+          turns_per: simulation turns per iteration (default 2). Lower
+            than rp_run_simulation's default because each iteration runs
+            a complete simulation; cumulative cost grows fast.
+          objective: 'rubric' (default — uses project rubric mean for
+            plateau detection) or 'pgr' (uses PGR composite score —
+            requires claims.md to exist; run rp_synthesize first).
+          plateau_patience: consecutive iterations without single-dim
+            improvement before terminating (default 2).
+        """
+        if objective not in ("rubric", "pgr"):
+            raise ValueError(
+                f"objective must be 'rubric' or 'pgr', got {objective!r}"
+            )
+
+        db_path = _resolve_db_path()
+        work_dir = _resolve_work_dir()
+        project_dir = _resolve_project_dir()
+        jm = _get_job_manager()
+
+        # Synchronous pre-check (same pattern as rp_run_simulation): catch
+        # missing-project / no-agents up front rather than via async failure.
+        if not db_path.exists():
+            raise FileNotFoundError(f"No database at {db_path}")
+        init_db(db_path)
+        with connect(db_path) as conn:
+            get_project(conn, project_id)
+            agents = get_project_agents(conn, project_id)
+        if not agents:
+            raise ValueError(f"project {project_id} has no agents assigned")
+
+        async def runner(job: Job, reporter: ProgressReporter) -> dict[str, Any]:
+            reporter.update(
+                current_step=f"running optimize ({iterations} iterations × {turns_per} turns)",
+                progress_pct=5.0,
+            )
+            result = await optimize.optimize_project(
+                project_id=project_id,
+                iterations=iterations,
+                turns_per=turns_per,
+                db_path=db_path,
+                work_dir=work_dir,
+                llm=LLMClient(),
+                plateau_patience=plateau_patience,
+                objective=objective,
+                project_dir=project_dir,
+            )
+            return {
+                "project_id": result.project_id,
+                "iterations_run": result.iterations_run,
+                "terminated_reason": result.terminated_reason,
+                "best_iteration": result.best_iteration,
+            }
+
+        try:
+            job_id = jm.submit(
+                kind=KIND_OPTIMIZE,
+                project_id=project_id,
+                args={
+                    "iterations": iterations,
+                    "turns_per": turns_per,
+                    "objective": objective,
+                    "plateau_patience": plateau_patience,
+                },
+                runner=runner,
+            )
+        except ProjectInUseError as e:
+            return {
+                "error": "project_in_use",
+                "message": str(e),
+                "active_job_id": e.active_job.job_id,
+                "active_job_kind": e.active_job.kind,
+                "active_job_status": e.active_job.status,
+                "hint": "poll rp_get_status(project_id) to track the active job; do not re-submit",
+            }
+
+        return {
+            "job_id": job_id,
+            "project_id": project_id,
+            "kind": KIND_OPTIMIZE,
+            "status": "queued",
+            "args": {
+                "iterations": iterations,
+                "turns_per": turns_per,
+                "objective": objective,
+                "plateau_patience": plateau_patience,
+            },
+            "hint": "poll rp_get_status(project_id) until active_job.status == 'complete'",
+        }
+
+    @mcp.tool()
+    def rp_synthesize(project_id: int) -> dict[str, Any]:
+        """Synthesize the five structured artifacts (claims, hypotheses,
+        experiments, decision, risks) from the project's blackboard.
+        Submitted as a background job (typical run: 1-3 minutes on a
+        local stack).
+
+        Returns IMMEDIATELY with {job_id, status: 'queued'}. Poll
+        rp_get_status(project_id) until active_job.status == 'complete',
+        then call rp_get_artifacts to fetch the bodies.
+
+        Concurrency: only ONE active job per project. If project_id has a
+        queued/running job (any kind), this returns
+        {error: 'project_in_use', active_job_id, ...}.
+
+        Synthesis runs against whatever's currently on the blackboard —
+        if you haven't run a simulation yet, the artifacts will be sparse
+        but still produced (empty hypotheses matrix, etc.). Run
+        rp_run_simulation first for substantive output.
+        """
+        db_path = _resolve_db_path()
+        project_dir = _resolve_project_dir()
+        jm = _get_job_manager()
+
+        if not db_path.exists():
+            raise FileNotFoundError(f"No database at {db_path}")
+        init_db(db_path)
+        with connect(db_path) as conn:
+            get_project(conn, project_id)  # raises if missing
+
+        async def runner(job: Job, reporter: ProgressReporter) -> dict[str, Any]:
+            reporter.update(
+                current_step="synthesizing artifacts",
+                progress_pct=10.0,
+            )
+            with connect(db_path) as conn:
+                result = await synthesize.synthesize_artifacts(
+                    conn,
+                    project_id=project_id,
+                    llm=LLMClient(),
+                    project_dir=project_dir,
+                )
+            return {
+                "project_id": result.project_id,
+                "out_dir": str(result.out_dir),
+                "artifacts": {name: str(path) for name, path in result.artifacts.items()},
+            }
+
+        try:
+            job_id = jm.submit(
+                kind=KIND_SYNTHESIZE,
+                project_id=project_id,
+                args={},
+                runner=runner,
+            )
+        except ProjectInUseError as e:
+            return {
+                "error": "project_in_use",
+                "message": str(e),
+                "active_job_id": e.active_job.job_id,
+                "active_job_kind": e.active_job.kind,
+                "active_job_status": e.active_job.status,
+                "hint": "poll rp_get_status(project_id) to track the active job; do not re-submit",
+            }
+
+        return {
+            "job_id": job_id,
+            "project_id": project_id,
+            "kind": KIND_SYNTHESIZE,
+            "status": "queued",
+            "args": {},
+            "hint": "poll rp_get_status(project_id) until active_job.status == 'complete', then call rp_get_artifacts",
         }
 
     @mcp.tool()

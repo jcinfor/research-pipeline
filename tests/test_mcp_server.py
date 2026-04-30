@@ -52,6 +52,8 @@ def test_tools_registered(server) -> None:
         "rp_get_status",
         "rp_get_artifacts",
         "rp_run_simulation",
+        "rp_run_optimize",
+        "rp_synthesize",
     }
 
 
@@ -516,3 +518,267 @@ async def test_get_status_active_job_clears_on_completion(
     assert final["active_job"] is None
     job_ids_in_recent = [j["job_id"] for j in final["recent_jobs"]]
     assert submit["job_id"] in job_ids_in_recent
+
+
+# ---------------------------------------------------------------------------
+# Phase 2.3 — rp_run_optimize + rp_synthesize
+# ---------------------------------------------------------------------------
+
+def _install_fast_optimize_stub(monkeypatch: pytest.MonkeyPatch) -> dict:
+    """Replace optimize.optimize_project with a fast async stub."""
+    from dataclasses import dataclass, field
+    from research_pipeline import mcp_server
+
+    @dataclass
+    class FakeOptResult:
+        project_id: int
+        iterations_run: int
+        terminated_reason: str
+        best_iteration: int
+        trace: list = field(default_factory=list)
+
+    captured: dict = {"called": False}
+
+    async def fake_optimize(*, project_id, iterations, turns_per, db_path,
+                            work_dir, llm=None, plateau_patience=2,
+                            objective="rubric", project_dir, **kwargs):
+        captured["called"] = True
+        captured["project_id"] = project_id
+        captured["iterations"] = iterations
+        captured["turns_per"] = turns_per
+        captured["objective"] = objective
+        import asyncio as _asyncio
+        await _asyncio.sleep(0.01)
+        return FakeOptResult(
+            project_id=project_id,
+            iterations_run=iterations,
+            terminated_reason="iteration_cap",
+            best_iteration=iterations,
+        )
+
+    monkeypatch.setattr(mcp_server.optimize, "optimize_project", fake_optimize)
+    return captured
+
+
+def _install_fast_synthesize_stub(monkeypatch: pytest.MonkeyPatch) -> dict:
+    """Replace synthesize.synthesize_artifacts with a fast async stub."""
+    from dataclasses import dataclass
+    from pathlib import Path
+    from research_pipeline import mcp_server
+
+    @dataclass
+    class FakeSynthResult:
+        project_id: int
+        out_dir: Path
+        artifacts: dict
+
+    captured: dict = {"called": False}
+
+    async def fake_synthesize(conn, *, project_id, llm=None, out_dir=None,
+                              project_dir=Path("./projects")):
+        captured["called"] = True
+        captured["project_id"] = project_id
+        out = out_dir or (project_dir / f"project_{project_id}" / "artifacts")
+        import asyncio as _asyncio
+        await _asyncio.sleep(0.01)
+        return FakeSynthResult(
+            project_id=project_id,
+            out_dir=out,
+            artifacts={
+                "claims": out / "claims.md",
+                "hypotheses": out / "hypotheses.md",
+                "experiments": out / "experiments.md",
+                "decision": out / "decision.md",
+                "risks": out / "risks.md",
+            },
+        )
+
+    monkeypatch.setattr(
+        mcp_server.synthesize, "synthesize_artifacts", fake_synthesize
+    )
+    return captured
+
+
+async def test_run_optimize_submits_job_and_completes(
+    server, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured = _install_fast_optimize_stub(monkeypatch)
+
+    create = await _async_call_tool(server, "rp_create_project", {
+        "goal": "Optimize test", "archetypes": ["scout"],
+    })
+    pid = create["project_id"]
+
+    submit = await _async_call_tool(server, "rp_run_optimize", {
+        "project_id": pid, "iterations": 2, "turns_per": 1,
+    })
+    assert "job_id" in submit
+    assert submit["status"] == "queued"
+    assert submit["kind"] == "optimize"
+    assert submit["args"]["iterations"] == 2
+
+    final = await _wait_for_terminal_status(server, pid)
+    assert captured["called"] is True
+    assert captured["iterations"] == 2
+    assert captured["turns_per"] == 1
+
+    job = next(j for j in final["recent_jobs"] if j["job_id"] == submit["job_id"])
+    assert job["status"] == "complete"
+    assert job["result"]["iterations_run"] == 2
+    assert job["result"]["terminated_reason"] == "iteration_cap"
+
+
+async def test_run_optimize_validates_objective(
+    server, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Bad objective raises synchronously, before submitting a job."""
+    _install_fast_optimize_stub(monkeypatch)
+
+    create = await _async_call_tool(server, "rp_create_project", {
+        "goal": "Objective-validation test", "archetypes": ["scout"],
+    })
+    pid = create["project_id"]
+
+    with pytest.raises(Exception):
+        await _async_call_tool(server, "rp_run_optimize", {
+            "project_id": pid, "objective": "nonsense",
+        })
+
+
+async def test_run_optimize_concurrency_forbid(
+    server, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A simulation in flight blocks an optimize submission for the same
+    project — concurrency invariant is at the project level, not the
+    job-kind level."""
+    import asyncio as _asyncio
+    from dataclasses import dataclass
+    from pathlib import Path
+    from research_pipeline import mcp_server
+
+    @dataclass
+    class FakeSim:
+        project_id: int
+        turns_run: int
+        posts_total: int
+        oasis_db_path: Path
+        report_path: Path | None = None
+
+    block = _asyncio.Event()
+
+    async def slow_sim(sim_cfg, *, db_path, work_dir, llm=None):
+        await block.wait()
+        return FakeSim(
+            project_id=sim_cfg.project_id, turns_run=1, posts_total=1,
+            oasis_db_path=work_dir / "stub.db",
+        )
+
+    monkeypatch.setattr(mcp_server.simulation, "run_simulation", slow_sim)
+    _install_fast_optimize_stub(monkeypatch)
+
+    create = await _async_call_tool(server, "rp_create_project", {
+        "goal": "Cross-kind concurrency test", "archetypes": ["scout"],
+    })
+    pid = create["project_id"]
+
+    sim_submit = await _async_call_tool(server, "rp_run_simulation", {
+        "project_id": pid, "turns": 1,
+    })
+    # Wait until simulation is running.
+    for _ in range(100):
+        status = await _async_call_tool(server, "rp_get_status", {"project_id": pid})
+        if status["active_job"] and status["active_job"]["status"] == "running":
+            break
+        await _asyncio.sleep(0.02)
+
+    # Optimize submit should be rejected — simulation is the active job.
+    opt_submit = await _async_call_tool(server, "rp_run_optimize", {
+        "project_id": pid, "iterations": 1, "turns_per": 1,
+    })
+    assert opt_submit.get("error") == "project_in_use"
+    assert opt_submit["active_job_id"] == sim_submit["job_id"]
+    assert opt_submit["active_job_kind"] == "simulation"
+
+    # Cleanup.
+    block.set()
+    await _wait_for_terminal_status(server, pid)
+
+
+async def test_synthesize_submits_job_and_completes(
+    server, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured = _install_fast_synthesize_stub(monkeypatch)
+
+    create = await _async_call_tool(server, "rp_create_project", {
+        "goal": "Synthesize test", "archetypes": ["scout"],
+    })
+    pid = create["project_id"]
+
+    submit = await _async_call_tool(server, "rp_synthesize", {"project_id": pid})
+    assert "job_id" in submit
+    assert submit["kind"] == "synthesize"
+    assert submit["args"] == {}
+
+    final = await _wait_for_terminal_status(server, pid)
+    assert captured["called"] is True
+    assert captured["project_id"] == pid
+
+    job = next(j for j in final["recent_jobs"] if j["job_id"] == submit["job_id"])
+    assert job["status"] == "complete"
+    assert "claims" in job["result"]["artifacts"]
+    assert "hypotheses" in job["result"]["artifacts"]
+    assert "experiments" in job["result"]["artifacts"]
+    assert "decision" in job["result"]["artifacts"]
+    assert "risks" in job["result"]["artifacts"]
+
+
+async def test_synthesize_concurrency_forbid_with_optimize(
+    server, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Synthesize submission rejected when an optimize is in flight on
+    the same project. Round-trips the cross-kind concurrency invariant."""
+    import asyncio as _asyncio
+    from dataclasses import dataclass, field
+    from research_pipeline import mcp_server
+
+    @dataclass
+    class FakeOptResult:
+        project_id: int
+        iterations_run: int
+        terminated_reason: str
+        best_iteration: int
+        trace: list = field(default_factory=list)
+
+    block = _asyncio.Event()
+
+    async def slow_optimize(*, project_id, iterations, turns_per, **kwargs):
+        await block.wait()
+        return FakeOptResult(
+            project_id=project_id, iterations_run=iterations,
+            terminated_reason="iteration_cap", best_iteration=iterations,
+        )
+
+    monkeypatch.setattr(mcp_server.optimize, "optimize_project", slow_optimize)
+    _install_fast_synthesize_stub(monkeypatch)
+
+    create = await _async_call_tool(server, "rp_create_project", {
+        "goal": "Synth-blocked-by-optimize test", "archetypes": ["scout"],
+    })
+    pid = create["project_id"]
+
+    opt_submit = await _async_call_tool(server, "rp_run_optimize", {
+        "project_id": pid, "iterations": 1, "turns_per": 1,
+    })
+    for _ in range(100):
+        status = await _async_call_tool(server, "rp_get_status", {"project_id": pid})
+        if status["active_job"] and status["active_job"]["status"] == "running":
+            break
+        await _asyncio.sleep(0.02)
+
+    synth_submit = await _async_call_tool(server, "rp_synthesize", {"project_id": pid})
+    assert synth_submit.get("error") == "project_in_use"
+    assert synth_submit["active_job_id"] == opt_submit["job_id"]
+    assert synth_submit["active_job_kind"] == "optimize"
+
+    block.set()
+    await _wait_for_terminal_status(server, pid)
