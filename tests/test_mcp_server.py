@@ -88,6 +88,33 @@ def test_create_with_all_archetypes(server) -> None:
     assert len(out["archetypes"]) == 8
 
 
+def test_rp_create_project_docstring_lists_actual_phase_1_subset(server) -> None:
+    """Regression guard. The rp_create_project docstring is read by the LLM
+    dispatcher to decide whether to call the tool and what archetypes to
+    pass. If PHASE_1_SUBSET drifts away from what the docstring claims,
+    the agent will confidently pass wrong values. Pin the docstring to the
+    canonical subset.
+
+    Originally caught by reviewer 2026-04-30: docstring claimed 5 archetypes
+    (literature_scout, hypothesis_generator, critic, statistician,
+    peer_reviewer); actual subset was 3 (scout, hypogen, critic).
+    """
+    from research_pipeline.archetypes import PHASE_1_SUBSET
+    from research_pipeline.mcp_server import build_server
+
+    s = build_server()
+    import asyncio
+    tools = asyncio.run(s.list_tools())
+    tool = next(t for t in tools if t.name == "rp_create_project")
+    desc = tool.description or ""
+    for archetype_id in PHASE_1_SUBSET:
+        assert archetype_id in desc, (
+            f"PHASE_1_SUBSET id {archetype_id!r} is missing from "
+            f"rp_create_project's docstring. Update the docstring to match "
+            f"the actual subset, or update PHASE_1_SUBSET to match the docstring."
+        )
+
+
 def test_create_rejects_unknown_archetype(server) -> None:
     with pytest.raises(Exception):
         _call_tool(server, "rp_create_project", {

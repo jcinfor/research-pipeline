@@ -79,11 +79,24 @@ def build_server() -> FastMCP:
     ) -> dict[str, Any]:
         """Create a new research project. Returns the new project id.
 
-        archetypes is a list of archetype ids. Pass None or an empty list
-        to use the default Phase-1 subset (literature_scout, hypothesis_generator,
-        critic, statistician, peer_reviewer). Pass ['all'] for the full 8-agent
-        roster. The 'auto' planner mode (LLM-selected archetypes) is not yet
-        exposed via MCP; use the CLI for that.
+        archetypes is a list of archetype ids drawn from this roster of 8:
+
+          scout         — Literature Scout
+          hypogen       — Hypothesis Generator
+          experimenter  — Experimenter
+          critic        — Critic
+          replicator    — Replicator
+          statistician  — Statistician
+          writer        — Writer
+          reviewer      — Peer Reviewer
+
+        Pass None or an empty list to use the default Phase-1 subset of 3
+        (scout, hypogen, critic) — the lightest team that still produces a
+        useful hypothesis matrix. Pass ['all'] for the full 8-agent roster.
+        Pass any subset like ['scout', 'critic', 'reviewer'] for a custom team.
+
+        The 'auto' planner mode (LLM-selected archetypes) is not yet exposed
+        via MCP; use the CLI's `--archetypes auto` for that.
         """
         if not goal.strip():
             raise ValueError("goal must not be empty")
