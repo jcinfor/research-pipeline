@@ -67,7 +67,30 @@ def mcp_serve() -> None:
     The server picks up the local `research_pipeline.db` and `models.toml`
     in the cwd it's launched from — same as the rest of the CLI.
     """
+    import sys
+
     from .mcp_server import build_server
+
+    # Probe models.toml at startup so the user gets a clear warning at
+    # registration time, not a cryptic per-tool failure when the agent
+    # later tries to call rp_ingest. The MCP server still starts — tools
+    # that don't need an LLM (rp_list_projects, rp_get_status,
+    # rp_get_artifacts) keep working — but anything LLM-dependent will
+    # surface this same error inline. Writing to stderr because MCP's
+    # stdio transport reserves stdout for protocol traffic.
+    try:
+        load_config()
+    except FileNotFoundError as e:
+        sys.stderr.write(
+            "\n[rp mcp serve] WARNING: models.toml not found.\n"
+            f"[rp mcp serve]   {e}\n"
+            "[rp mcp serve] The server will start, but LLM-dependent tools\n"
+            "[rp mcp serve] (rp_ingest, plus phase-2 rp_run_simulation /\n"
+            "[rp mcp serve] rp_synthesize) will fail until models.toml is\n"
+            "[rp mcp serve] reachable. Copy poc/models.toml to ./models.toml\n"
+            "[rp mcp serve] and edit base_url to match your stack.\n\n"
+        )
+        sys.stderr.flush()
 
     server = build_server()
     console.print(

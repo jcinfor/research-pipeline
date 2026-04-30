@@ -1,8 +1,6 @@
 ---
 name: rp
 description: "Drive the rp multi-agent research pipeline — ingest papers, run simulations, get hypothesis-matrix artifacts. Use when analyzing documents, structuring research, or testing hypotheses across papers."
-when_to_use: "When the user says any of: 'analyze these papers', 'help me think about [research topic]', 'find what to argue with', 'what's load-bearing in this paper', 'set up a research project', 'run a hypothesis matrix on this', 'synthesize across these sources'. Also when the user uploads PDFs / markdown research documents and asks an analysis question."
-allowed-tools: "Bash(uv run rp *) Bash(rp *) Bash(ls *) Bash(cat *)"
 ---
 
 # rp — multi-agent research pipeline
@@ -19,30 +17,43 @@ The whole point: scientific research is not a linear process. Claims contradict 
 
 ## When to reach for this skill (and when NOT to)
 
-**Reach for it when** the user is asking you to do real research work on multi-document inputs:
+**Reach for it when** the user says any of the following (or close paraphrases):
+- *"Analyze these papers."*
 - *"Help me figure out what these three papers are actually arguing."*
-- *"What should I worry about in this proposal?"*
-- *"I want to test the claim that X — what would I need to falsify it?"*
-- *"Run an analysis on these PDFs and give me what's load-bearing vs what's hand-waving."*
+- *"Find what to argue with in this proposal."*
+- *"What's load-bearing in this paper?"*
+- *"Set up a research project for X."*
+- *"Run a hypothesis matrix on this."*
+- *"Synthesize across these sources."*
+- *"What would I need to falsify the claim that X?"*
+
+Also reach for it when the user uploads PDFs or markdown research documents and asks an analysis question — even if they don't use the exact phrasing above, the document-set + analysis-question shape is the trigger.
 
 **Don't reach for it when** the user just wants a quick summary or a one-shot question. `rp` is designed for substantive multi-document research synthesis where the *output format* matters — hypothesis matrix vs report. If the user just asked "what's this paper about", a normal summary is the right answer.
 
 A useful test: would the user benefit from `claims.md`, `hypotheses.md`, `experiments.md`, `decision.md`, `risks.md` as separate, structured, *machine-readable* artifacts they can revisit? If yes, `rp`. If no, just answer in chat.
 
+## Two ways this skill drives rp — and when each is preferred
+
+This skill works in **two modes**, depending on whether the user has registered rp's MCP server:
+
+- **MCP mode (preferred when available).** If `rp mcp serve` is registered with the user's MCP client (Claude Code, Cursor, Cline, etc.), call the structured `mcp__rp__rp_*` tools directly: `rp_list_projects`, `rp_create_project`, `rp_ingest`, `rp_get_status`, `rp_get_artifacts`. Faster, structured returns, fewer parsing errors.
+- **Shell-fallback mode.** If the MCP server isn't registered, fall back to `uv run rp project ...` via Bash. The CLI surface mirrors the MCP tool surface 1:1, so the workflow is identical — only the invocation form changes.
+
+Tool permission for either mode is the user's responsibility — Claude Code will prompt on first use, or the user can pre-approve in `.claude/settings.local.json` (e.g. `mcp__rp__*` for the MCP tools, `Bash(uv run rp *)` for shell fallback). This skill doesn't (and can't) grant permissions itself.
+
 ## Required setup
 
 Before invoking the workflow, confirm:
 
-1. **The MCP server is registered.** Check via `claude mcp list` — you should see `rp: ... ✓ Connected`. If not, register it:
+1. **MCP server registered (preferred path).** Check via `claude mcp list` — you should see `rp: ... ✓ Connected`. If yes, MCP mode is available. If not, the user can register it:
    ```bash
    claude mcp add rp --scope user -- uv --directory \
        /absolute/path/to/research-pipeline run rp mcp serve
    ```
-   The user has to run that themselves; you can't.
+   The user has to run that themselves; you can't. If they prefer not to (or don't have time), shell-fallback mode still works fine.
 
-2. **Local LLM stack is reachable.** `rp` uses the user's `models.toml` for chat + embeddings. If `rp_ingest` fails with a connection error, that's the diagnosis — point them at `models.toml`.
-
-If the MCP server isn't registered, fall back to running `uv run rp project ...` directly via Bash. The CLI surface mirrors the MCP tool surface 1:1; your `allowed-tools` covers it.
+2. **Local LLM stack is reachable.** `rp` uses the user's `models.toml` for chat + embeddings. If `rp_ingest` (or `uv run rp project ingest`) fails with a connection error, that's the diagnosis — point them at `models.toml`.
 
 ## The workflow — typical end-to-end
 
