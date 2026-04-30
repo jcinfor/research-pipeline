@@ -59,7 +59,9 @@ Before invoking the workflow, confirm:
 
 1. **List existing projects** (`rp_list_projects`) — see whether the user already has work in flight you should resume rather than starting fresh.
 
-2. **Create a new project** (`rp_create_project`) with a *crisp goal statement*. The goal should be a question the agent team can argue about, not a topic. Good: *"Does TKG memory beat blackboard+embeddings on multi-session retrieval at 26B-class generators?"* Bad: *"Memory architectures."*
+   **Step 1 must complete before step 2. Do not run them in parallel.** If `rp_list_projects` returns a project whose goal matches the user's current intent (semantically — same comparison, same target system, related question), ASK the user *"I see you already have project N — '<goal>'. Should I add to that, or start a fresh one?"* before calling `rp_create_project`. Creating a duplicate is reversible but wastes the user's blackboard history and dilutes the cross-project artifact view. Asking is cheap. The "skip ahead and parallelize" instinct is wrong here even though both calls are individually fast.
+
+2. **Create a new project** (`rp_create_project`) with a *crisp goal statement*. Only do this after step 1 finished and either returned no matching project, or the user confirmed they want a new one. The goal should be a question the agent team can argue about, not a topic. Good: *"Does TKG memory beat blackboard+embeddings on multi-session retrieval at 26B-class generators?"* Bad: *"Memory architectures."*
 
    By default, use the Phase-1 archetype subset (scout, hypogen, critic). For broader coverage on a substantial question, pass `archetypes=["all"]` to engage all 8 (Literature Scout / Hypothesis Generator / Experimenter / Critic / Replicator / Statistician / Writer / Peer Reviewer).
 
