@@ -1,7 +1,7 @@
 [project]
 name = "research-pipeline"
-version = "0.1.0"
-description = "Scientific research pipeline: per-user Karpathy wiki + multi-agent simulation."
+version = "0.2.0"
+description = "Scientific research pipeline: per-user Karpathy wiki + multi-agent simulation. Ships an MCP server (`rp mcp serve`) so agent platforms can drive the pipeline directly."
 requires-python = ">=3.12"
 readme = "README.md"
 license = { text = "MIT" }
@@ -15,6 +15,7 @@ dependencies = [
     "rich>=13.7",
     "tomli>=2.0; python_version<'3.11'",
     "platformdirs>=4.0",
+    "mcp>=1.0",
 ]
 
 [project.optional-dependencies]

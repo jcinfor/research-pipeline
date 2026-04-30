@@ -6,6 +6,32 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
 ## [Unreleased]
 
+## [0.2.0] — 2026-04-30
+
+Ships `rp` as an MCP skill. The pipeline is now drivable from Claude Code, OpenCode, OpenClaw, Cline, Cursor, Goose, or any MCP-aware client — your local stack, your LLM endpoints, your data. See [docs/integrations/mcp-server.md](docs/integrations/mcp-server.md) for the registration recipe.
+
+### Added
+
+- `rp mcp serve` — MCP server over stdio, exposes the pipeline as five tools.
+  - `rp_list_projects` — list projects with id, goal, status, archetypes.
+  - `rp_create_project` — create with goal + archetypes (Phase-1 default subset, `["all"]`, or an explicit list).
+  - `rp_ingest` — convert + chunk + embed a document into a project's blackboard.
+  - `rp_status` — full project state including blackboard counts and which artifacts are on disk.
+  - `rp_get_artifacts` — fetch synthesized artifact bodies inline (markdown).
+- [docs/integrations/mcp-server.md](docs/integrations/mcp-server.md) — Claude Code registration recipe, troubleshooting, what's coming in v0.3.0.
+- 12 tests under `tests/test_mcp_server.py` covering tool registration, the round-trips, validation errors, and the on-disk artifact discovery path.
+
+### Changed
+
+- `mcp>=1.0` is now a runtime dependency (was previously a dev-extra by inheritance).
+- README leads with the MCP integration as a first-class surface.
+
+### Coming in v0.3.0
+
+- Async tools for long-running ops (`rp_run_simulation`, `rp_run_optimize`, `rp_synthesize`) via the job-id pattern.
+- Resource URIs (`rp://projects/...`) for clients that prefer URI-based fetches over inline content.
+- Progress streaming via SSE for clients that support it.
+
 ## [0.1.0] — 2026-04-29
 
 First public release. The pipeline product (provider-agnostic LLM adapter, 8 agent archetypes, OASIS-backed simulation with prompted-turn loop, optimization loop with per-agent rubric, five structured artifacts, live SSE dashboard) and the agent-memory benchmark suite (LoCoMo + LongMemEval + 14 in-house stress tests, comparing eight in-house architectures against the actual current mem0 v3 product in both default-install and full-nlp-extras configurations) are stable and reproducible. See [BENCHMARKS.md](BENCHMARKS.md) for the empirical comparison and [docs/architecture.md](docs/architecture.md) for the three-tier memory design.

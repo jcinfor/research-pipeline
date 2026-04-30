@@ -44,9 +44,39 @@ from .projects import (
 app = typer.Typer(add_completion=False, no_args_is_help=True, help="Research Pipeline CLI")
 project_app = typer.Typer(add_completion=False, no_args_is_help=True, help="Projects")
 wiki_app = typer.Typer(add_completion=False, no_args_is_help=True, help="Per-user wiki")
+mcp_app = typer.Typer(
+    add_completion=False, no_args_is_help=True,
+    help="MCP server — expose rp as a skill for Claude Code, OpenCode, etc.",
+)
 app.add_typer(project_app, name="project")
 app.add_typer(wiki_app, name="wiki")
+app.add_typer(mcp_app, name="mcp")
 console = Console()
+
+
+@mcp_app.command("serve")
+def mcp_serve() -> None:
+    """Run the MCP server over stdio. Wire this into Claude Code's MCP
+    config or any other MCP-aware client.
+
+    Example Claude Code registration (run once from a shell):
+
+        claude mcp add rp --scope user -- uv --directory \\
+            /path/to/research-pipeline run rp mcp serve
+
+    The server picks up the local `research_pipeline.db` and `models.toml`
+    in the cwd it's launched from — same as the rest of the CLI.
+    """
+    from .mcp_server import build_server
+
+    server = build_server()
+    console.print(
+        f"[dim]rp mcp serve · cwd={Path.cwd()} · "
+        "expose rp_list_projects, rp_create_project, rp_ingest, rp_status, "
+        "rp_get_artifacts[/dim]",
+        style="dim",
+    )
+    server.run()
 
 
 @app.command()

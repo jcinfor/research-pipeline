@@ -80,6 +80,32 @@ The benchmarks aren't all wins for the in-house architectures. `mem0_real` still
 
 ---
 
+## Use rp as an MCP skill (v0.2.0+)
+
+`rp` ships an MCP server, so any MCP-aware agent — Claude Code, OpenCode, OpenClaw, Cline, Cursor, Goose — can drive the pipeline from inside an agent conversation. No separate UI; your stack, your LLM endpoints, your data.
+
+```bash
+# One-time, after cloning + uv sync (see Quickstart below):
+claude mcp add rp --scope user -- uv --directory \
+    /absolute/path/to/research-pipeline run rp mcp serve
+```
+
+After restart, a fresh Claude Code session has these tools available:
+
+| Tool | What it does |
+|---|---|
+| `rp_list_projects` | List projects with id, goal, status, archetypes |
+| `rp_create_project` | Create with goal + archetypes |
+| `rp_ingest` | Convert + chunk + embed a document into a project |
+| `rp_status` | Full project state (counts, last activity, artifacts available) |
+| `rp_get_artifacts` | Fetch synthesized artifacts inline |
+
+Then ask the agent: *"Create a new rp project for analyzing X. Ingest these three PDFs. Tell me what got produced."* — that's the whole thing.
+
+Long-running tools (`rp_run_simulation`, `rp_run_optimize`, `rp_synthesize`) ship in v0.3.0 with the async/job-id pattern; for now run those via the CLI from a separate terminal. See [docs/integrations/mcp-server.md](docs/integrations/mcp-server.md) for the full registration recipe and troubleshooting.
+
+---
+
 ## Quickstart
 
 ```bash

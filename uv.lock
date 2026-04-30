@@ -3520,11 +3520,12 @@ wheels = [
 
 [[package]]
 name = "research-pipeline"
-version = "0.0.1"
+version = "0.2.0"
 source = { editable = "." }
 dependencies = [
     { name = "fastapi" },
     { name = "httpx" },
+    { name = "mcp" },
     { name = "openai" },
     { name = "platformdirs" },
     { name = "pydantic" },
@@ -3557,6 +3558,7 @@ requires-dist = [
     { name = "fastapi", specifier = ">=0.110" },
     { name = "httpx", specifier = ">=0.27" },
     { name = "markitdown", extras = ["pdf", "docx", "pptx", "xlsx"], marker = "extra == 'ingest'", specifier = ">=0.0.1" },
+    { name = "mcp", specifier = ">=1.0" },
     { name = "mem0ai", marker = "extra == 'dev'", editable = "../mem0" },
     { name = "mflow-ai", marker = "extra == 'dev'", specifier = ">=0.3.6" },
     { name = "ollama", marker = "extra == 'dev'", specifier = ">=0.6.1" },
