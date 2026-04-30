@@ -12,7 +12,7 @@ from pathlib import Path
 
 import pytest
 
-from research_pipeline.mcp_server import build_server
+from research_pipeline.mcp_server import _reset_job_manager_for_tests, build_server
 
 
 @pytest.fixture
@@ -20,6 +20,10 @@ def workspace(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     """Run each test with cwd pinned to a fresh tmp dir so the MCP server's
     cwd-resolution defaults pick up the test's isolated db + projects dir."""
     monkeypatch.chdir(tmp_path)
+    # Reset the lazy-singleton JobManager so it re-initializes against the
+    # test's tmp_path db. Without this, the second test inherits the first
+    # test's JobManager (pointing at a now-deleted db).
+    _reset_job_manager_for_tests()
     return tmp_path
 
 
@@ -47,6 +51,7 @@ def test_tools_registered(server) -> None:
         "rp_ingest",
         "rp_get_status",
         "rp_get_artifacts",
+        "rp_run_simulation",
     }
 
 
@@ -241,3 +246,273 @@ def test_status_picks_up_artifacts_directory(server, workspace: Path) -> None:
 
     status = _call_tool(server, "rp_get_status", {"project_id": pid})
     assert set(status["artifacts_available"]) == {"claims", "risks"}
+
+
+# ---------------------------------------------------------------------------
+# Phase 2.2 — rp_run_simulation + extended rp_get_status (active jobs)
+# ---------------------------------------------------------------------------
+
+async def _async_call_tool(server, name: str, args: dict | None = None) -> dict:
+    """Like _call_tool but uses await — required for tools that schedule
+    background tasks (rp_run_simulation), since those tasks need to keep
+    running after the call returns and asyncio.run() would tear down the
+    loop too early."""
+    args = args or {}
+    result = await server.call_tool(name, args)
+    if isinstance(result, tuple):
+        return result[1] or {}
+    return result
+
+
+def _install_fast_simulation_stub(monkeypatch: pytest.MonkeyPatch) -> dict:
+    """Replace simulation.run_simulation with a fast async stub that
+    records its call args. Returns a dict capturing call info so tests
+    can assert on it."""
+    from dataclasses import dataclass
+    from pathlib import Path
+    from research_pipeline import mcp_server
+
+    @dataclass
+    class FakeResult:
+        project_id: int
+        turns_run: int
+        posts_total: int
+        oasis_db_path: Path
+        report_path: Path | None = None
+
+    captured: dict = {"called": False}
+
+    async def fake_run(sim_cfg, *, db_path, work_dir, llm=None):
+        captured["called"] = True
+        captured["project_id"] = sim_cfg.project_id
+        captured["turns"] = sim_cfg.turn_cap
+        captured["reddit_every"] = sim_cfg.reddit_round_every
+        captured["db_path"] = db_path
+        captured["work_dir"] = work_dir
+        # tiny await so other coroutines can interleave
+        import asyncio as _asyncio
+        await _asyncio.sleep(0.01)
+        return FakeResult(
+            project_id=sim_cfg.project_id,
+            turns_run=sim_cfg.turn_cap,
+            posts_total=sim_cfg.turn_cap * 2,  # arbitrary stub
+            oasis_db_path=work_dir / f"project_{sim_cfg.project_id}_oasis.db",
+        )
+
+    monkeypatch.setattr(mcp_server.simulation, "run_simulation", fake_run)
+    return captured
+
+
+async def _wait_for_terminal_status(
+    server,
+    project_id: int,
+    timeout_s: float = 5.0,
+) -> dict:
+    """Poll rp_get_status until active_job is None (i.e. no longer
+    queued/running) and returns the final status payload."""
+    import asyncio as _asyncio
+    deadline = _asyncio.get_event_loop().time() + timeout_s
+    while _asyncio.get_event_loop().time() < deadline:
+        status = await _async_call_tool(server, "rp_get_status", {"project_id": project_id})
+        if status.get("active_job") is None and status.get("recent_jobs"):
+            return status
+        await _asyncio.sleep(0.02)
+    raise AssertionError(f"Timed out waiting for project {project_id} to reach terminal state")
+
+
+async def test_run_simulation_submits_job_and_completes(
+    server, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Happy path: tool returns a job_id immediately; runner runs to
+    completion against the fast stub; status eventually shows complete."""
+    captured = _install_fast_simulation_stub(monkeypatch)
+
+    create = await _async_call_tool(server, "rp_create_project", {
+        "goal": "Run-sim test", "archetypes": ["scout"],
+    })
+    pid = create["project_id"]
+
+    submit = await _async_call_tool(server, "rp_run_simulation", {
+        "project_id": pid, "turns": 2, "reddit_every": 0,
+    })
+    assert "job_id" in submit
+    assert submit["status"] == "queued"
+    assert submit["kind"] == "simulation"
+    assert submit["args"] == {"turns": 2, "reddit_every": 0}
+
+    # Wait for the runner to finish.
+    final = await _wait_for_terminal_status(server, pid)
+    assert captured["called"] is True
+    assert captured["project_id"] == pid
+    assert captured["turns"] == 2
+
+    # The completed job should be in recent_jobs with status=complete.
+    completed = [j for j in final["recent_jobs"] if j["job_id"] == submit["job_id"]]
+    assert len(completed) == 1
+    assert completed[0]["status"] == "complete"
+    assert completed[0]["result"]["turns_run"] == 2
+    assert completed[0]["result"]["posts_total"] == 4
+    assert completed[0]["progress_pct"] == 100
+
+
+async def test_run_simulation_rejects_duplicate_with_project_in_use(
+    server, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Second submission against a project with an active job returns a
+    structured project_in_use error, NOT another job_id."""
+    # Use a stub that blocks until we let it go, so the first job stays
+    # active long enough for the second submission to collide with it.
+    import asyncio as _asyncio
+    from dataclasses import dataclass
+    from pathlib import Path
+    from research_pipeline import mcp_server
+
+    @dataclass
+    class FakeResult:
+        project_id: int
+        turns_run: int
+        posts_total: int
+        oasis_db_path: Path
+        report_path: Path | None = None
+
+    block = _asyncio.Event()
+
+    async def slow_run(sim_cfg, *, db_path, work_dir, llm=None):
+        await block.wait()
+        return FakeResult(
+            project_id=sim_cfg.project_id, turns_run=1, posts_total=1,
+            oasis_db_path=work_dir / "stub.db",
+        )
+
+    monkeypatch.setattr(mcp_server.simulation, "run_simulation", slow_run)
+
+    create = await _async_call_tool(server, "rp_create_project", {
+        "goal": "Concurrency-forbid test", "archetypes": ["scout"],
+    })
+    pid = create["project_id"]
+
+    first = await _async_call_tool(server, "rp_run_simulation", {
+        "project_id": pid, "turns": 1,
+    })
+    assert "job_id" in first
+    first_job_id = first["job_id"]
+
+    # Wait until first is actually running.
+    for _ in range(100):
+        status = await _async_call_tool(server, "rp_get_status", {"project_id": pid})
+        if status["active_job"] and status["active_job"]["status"] == "running":
+            break
+        await _asyncio.sleep(0.02)
+
+    # Submit a second; expect project_in_use error.
+    second = await _async_call_tool(server, "rp_run_simulation", {
+        "project_id": pid, "turns": 1,
+    })
+    assert second.get("error") == "project_in_use"
+    assert second["active_job_id"] == first_job_id
+    assert "hint" in second  # tells the agent to poll, not stack
+
+    # Cleanup: let the slow_run finish so the test exits cleanly.
+    block.set()
+    await _wait_for_terminal_status(server, pid)
+
+
+async def test_run_simulation_rejects_project_with_no_agents(
+    server, monkeypatch: pytest.MonkeyPatch, workspace: Path,
+) -> None:
+    """A project with no agents can't run a simulation. The tool should
+    raise synchronously (before submitting a job) so the agent gets a
+    clear error, not a job_id that immediately fails."""
+    _install_fast_simulation_stub(monkeypatch)
+
+    create = await _async_call_tool(server, "rp_create_project", {
+        "goal": "No-agents test", "archetypes": ["scout"],
+    })
+    pid = create["project_id"]
+
+    # Manually delete the project's agents to simulate the no-agents case.
+    from research_pipeline.db import connect
+    with connect(workspace / "research_pipeline.db") as conn:
+        conn.execute("DELETE FROM agents WHERE project_id = ?", (pid,))
+        conn.commit()
+
+    with pytest.raises(Exception):  # FastMCP wraps ValueError; just ensure raise
+        await _async_call_tool(server, "rp_run_simulation", {
+            "project_id": pid, "turns": 1,
+        })
+
+
+async def test_get_status_includes_active_job_when_running(
+    server, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """rp_get_status's active_job field is populated while the job is in
+    flight."""
+    import asyncio as _asyncio
+    from dataclasses import dataclass
+    from pathlib import Path
+    from research_pipeline import mcp_server
+
+    @dataclass
+    class FakeResult:
+        project_id: int
+        turns_run: int
+        posts_total: int
+        oasis_db_path: Path
+        report_path: Path | None = None
+
+    block = _asyncio.Event()
+
+    async def blocked_run(sim_cfg, *, db_path, work_dir, llm=None):
+        await block.wait()
+        return FakeResult(
+            project_id=sim_cfg.project_id, turns_run=1, posts_total=1,
+            oasis_db_path=work_dir / "stub.db",
+        )
+
+    monkeypatch.setattr(mcp_server.simulation, "run_simulation", blocked_run)
+
+    create = await _async_call_tool(server, "rp_create_project", {
+        "goal": "Active-job-surfaced test", "archetypes": ["scout"],
+    })
+    pid = create["project_id"]
+
+    submit = await _async_call_tool(server, "rp_run_simulation", {
+        "project_id": pid, "turns": 1,
+    })
+
+    # Wait for the runner to start — its status moves from queued to running.
+    for _ in range(100):
+        status = await _async_call_tool(server, "rp_get_status", {"project_id": pid})
+        if status["active_job"] and status["active_job"]["status"] == "running":
+            break
+        await _asyncio.sleep(0.02)
+    else:
+        block.set()  # cleanup
+        raise AssertionError("Job never reached running state")
+
+    assert status["active_job"]["job_id"] == submit["job_id"]
+    assert status["active_job"]["kind"] == "simulation"
+    # Cleanup.
+    block.set()
+    await _wait_for_terminal_status(server, pid)
+
+
+async def test_get_status_active_job_clears_on_completion(
+    server, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """After a job completes, active_job is None and recent_jobs lists it."""
+    _install_fast_simulation_stub(monkeypatch)
+
+    create = await _async_call_tool(server, "rp_create_project", {
+        "goal": "Clears-on-complete test", "archetypes": ["scout"],
+    })
+    pid = create["project_id"]
+
+    submit = await _async_call_tool(server, "rp_run_simulation", {
+        "project_id": pid, "turns": 1,
+    })
+
+    final = await _wait_for_terminal_status(server, pid)
+    assert final["active_job"] is None
+    job_ids_in_recent = [j["job_id"] for j in final["recent_jobs"]]
+    assert submit["job_id"] in job_ids_in_recent
