@@ -22,7 +22,7 @@ If project 7 doesn't exist, ask the user to confirm the id. Don't guess.
 ### 2. Get current state
 
 ```
-rp_status(project_id=7)
+rp_get_status(project_id=7)
 → {
     project_id: 7,
     goal: "Compare memory architectures...",

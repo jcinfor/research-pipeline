@@ -45,7 +45,7 @@ def test_tools_registered(server) -> None:
         "rp_list_projects",
         "rp_create_project",
         "rp_ingest",
-        "rp_status",
+        "rp_get_status",
         "rp_get_artifacts",
     }
 
@@ -105,7 +105,7 @@ def test_status_for_new_project(server) -> None:
         "goal": "Status test", "archetypes": ["scout"],
     })
     pid = create["project_id"]
-    status = _call_tool(server, "rp_status", {"project_id": pid})
+    status = _call_tool(server, "rp_get_status", {"project_id": pid})
     assert status["project_id"] == pid
     assert status["goal"] == "Status test"
     assert status["status"] in ("created", "active", "draft", None)
@@ -116,7 +116,7 @@ def test_status_for_new_project(server) -> None:
 def test_status_missing_project_raises(server) -> None:
     _call_tool(server, "rp_create_project", {"goal": "x", "archetypes": ["scout"]})
     with pytest.raises(Exception):
-        _call_tool(server, "rp_status", {"project_id": 99999})
+        _call_tool(server, "rp_get_status", {"project_id": 99999})
 
 
 def test_get_artifacts_no_artifacts_yet(server) -> None:
@@ -157,7 +157,7 @@ def test_get_artifacts_returns_files_when_present(server, workspace: Path) -> No
 
 
 def test_status_picks_up_artifacts_directory(server, workspace: Path) -> None:
-    """`rp_status` lists which artifact files exist on disk."""
+    """`rp_get_status` lists which artifact files exist on disk."""
     create = _call_tool(server, "rp_create_project", {
         "goal": "Status sees artifacts test", "archetypes": ["scout"],
     })
@@ -167,5 +167,5 @@ def test_status_picks_up_artifacts_directory(server, workspace: Path) -> None:
     (artifacts_dir / "claims.md").write_text("stub")
     (artifacts_dir / "risks.md").write_text("stub")
 
-    status = _call_tool(server, "rp_status", {"project_id": pid})
+    status = _call_tool(server, "rp_get_status", {"project_id": pid})
     assert set(status["artifacts_available"]) == {"claims", "risks"}

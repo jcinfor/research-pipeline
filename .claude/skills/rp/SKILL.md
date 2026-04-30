@@ -60,7 +60,7 @@ If the MCP server isn't registered, fall back to running `uv run rp project ...`
    ```
    `--turns 3` is a good default for a substantive question. `--turns 1` is the smoke-test default. The simulation typically takes 5-30 minutes depending on stack speed and document count. Stream output so the user can see progress.
 
-   *Phase-2 will expose this as `rp_run_simulation` (async, returns job_id, polls via `rp_status`). Until then, CLI fallback.*
+   *Phase-2 will expose this as `rp_run_simulation` (async, returns job_id, polls via `rp_get_status`). Until then, CLI fallback.*
 
 5. **Optionally run the optimization loop** — only if the user explicitly asks for refinement, or if the per-agent rubric in the simulation output flagged weak agents. `uv run rp project optimize <project_id> --iterations 3 --turns-per 2` runs targeted re-tuning.
 
@@ -89,7 +89,7 @@ A good closing pattern: *"This is the rp output, condensed. The full claims.md h
 
 - **No project exists** — if `rp_list_projects` returns empty, you almost certainly need to create one. Don't ask the user to do it.
 - **Ingest fails on a file** — usually models.toml issues. The error message will say so. Tell the user, don't retry blindly.
-- **Simulation fails partway** — the project is left in a partial state. `rp_status` shows the blackboard state. You can re-run the simulation from where it stopped, or synthesize from what's there.
+- **Simulation fails partway** — the project is left in a partial state. `rp_get_status` shows the blackboard state. You can re-run the simulation from where it stopped, or synthesize from what's there.
 - **Synthesize fails** — the file generation falls back to stubs that explain the failure. Surface those — don't pretend.
 - **Artifacts already exist when starting** — if the user has an existing project with artifacts, don't blow away their work. Offer to resume, re-run, or start fresh.
 - **User asks about a paper that's not ingested** — ingest first, then run, then answer. Don't try to summarize a paper from filename alone.

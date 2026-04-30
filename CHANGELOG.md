@@ -23,7 +23,7 @@ The MCP server gives the agent *access* to rp's tools; the Skill gives it *metho
   - `rp_list_projects` — list projects with id, goal, status, archetypes.
   - `rp_create_project` — create with goal + archetypes (Phase-1 default subset, `["all"]`, or an explicit list).
   - `rp_ingest` — convert + chunk + embed a document into a project's blackboard.
-  - `rp_status` — full project state including blackboard counts and which artifacts are on disk.
+  - `rp_get_status` — full project state including blackboard counts and which artifacts are on disk.
   - `rp_get_artifacts` — fetch synthesized artifact bodies inline (markdown).
 - [.claude/skills/rp/SKILL.md](.claude/skills/rp/SKILL.md) — project-scoped Claude Skill teaching the agent when to reach for rp, the canonical workflow, the artifact-presentation pattern, and what *not* to do (e.g. don't burn 30 minutes on a multi-agent simulation when the user just wants a quick summary).
 - [.claude/skills/rp/examples/canonical-flow.md](.claude/skills/rp/examples/canonical-flow.md) — worked example: user uploads three papers, gets a hypothesis matrix.

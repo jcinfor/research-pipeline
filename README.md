@@ -97,7 +97,7 @@ After restart, a fresh Claude Code session has these tools available:
 | `rp_list_projects` | List projects with id, goal, status, archetypes |
 | `rp_create_project` | Create with goal + archetypes |
 | `rp_ingest` | Convert + chunk + embed a document into a project |
-| `rp_status` | Full project state (counts, last activity, artifacts available) |
+| `rp_get_status` | Full project state (counts, last activity, artifacts available) |
 | `rp_get_artifacts` | Fetch synthesized artifacts inline |
 
 Then ask the agent: *"Create a new rp project for analyzing X. Ingest these three PDFs. Tell me what got produced."* — that's the whole thing.

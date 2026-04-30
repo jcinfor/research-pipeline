@@ -15,7 +15,7 @@ After registering, your agent can:
 - *"Show me the status of project 4."*
 - *"What did the synthesizer produce for project 4?"*
 
-The agent calls `rp_create_project`, `rp_ingest`, `rp_status`, `rp_get_artifacts` directly — no shell commands needed.
+The agent calls `rp_create_project`, `rp_ingest`, `rp_get_status`, `rp_get_artifacts` directly — no shell commands needed.
 
 > **Phase 1 scope.** This release ships the five fast / synchronous tools. Long-running operations (`rp_run_simulation`, `rp_run_optimize`, `rp_synthesize`) ship in v0.3.0 with the async/job-id pattern that handles the 30-60s MCP client timeout. For now, run those via the CLI from a separate terminal.
 
@@ -26,7 +26,7 @@ The agent calls `rp_create_project`, `rp_ingest`, `rp_status`, `rp_get_artifacts
 | `rp_list_projects` | List projects with id, goal, status, archetypes | <100ms |
 | `rp_create_project` | Create a project with goal + archetype list | <500ms |
 | `rp_ingest` | Convert + chunk + embed a document into a project | 5-30s typical |
-| `rp_status` | Full state for one project — counts, last activity, artifacts available | <100ms |
+| `rp_get_status` | Full state for one project — counts, last activity, artifacts available | <100ms |
 | `rp_get_artifacts` | Fetch synthesized artifact bodies inline | <500ms |
 
 ## Register with Claude Code
@@ -85,7 +85,7 @@ The agent should call `rp_list_projects`, then `rp_create_project`, and report t
 - `rp_run_simulation` — start a simulation as a background job; returns job_id for polling
 - `rp_run_optimize` — same async pattern for the optimization loop
 - `rp_synthesize` — produce the artifact bundle (sync if fast enough, async otherwise)
-- `rp_status` extended to surface running jobs with progress
+- `rp_get_status` extended to surface running jobs with progress
 - Resource URIs (`rp://projects/{id}/artifacts/{name}`) for clients that prefer URI fetches over inline content
 
 ## Troubleshooting

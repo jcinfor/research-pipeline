@@ -72,7 +72,7 @@ def mcp_serve() -> None:
     server = build_server()
     console.print(
         f"[dim]rp mcp serve · cwd={Path.cwd()} · "
-        "expose rp_list_projects, rp_create_project, rp_ingest, rp_status, "
+        "expose rp_list_projects, rp_create_project, rp_ingest, rp_get_status, "
         "rp_get_artifacts[/dim]",
         style="dim",
     )

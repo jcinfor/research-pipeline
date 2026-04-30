@@ -9,7 +9,7 @@ keep up to date.
   rp_list_projects        — list projects with id, goal, state
   rp_create_project       — create a new project with goal + archetypes
   rp_ingest               — ingest a document into a project
-  rp_status               — full state for one project (counts + last activity)
+  rp_get_status               — full state for one project (counts + last activity)
   rp_get_artifacts        — fetch the synthesized artifacts (inline content)
 
 Phase 2 adds async/long-running tools (rp_run_simulation, rp_run_optimize,
@@ -149,7 +149,7 @@ def build_server() -> FastMCP:
         }
 
     @mcp.tool()
-    def rp_status(project_id: int) -> dict[str, Any]:
+    def rp_get_status(project_id: int) -> dict[str, Any]:
         """Get a project's current state — goal, status, archetypes, plus
         counts of blackboard entries by kind and the latest activity timestamp.
         Use this to check whether a project is ready for `rp_get_artifacts`
