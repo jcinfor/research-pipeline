@@ -222,7 +222,7 @@ async def optimize_project(
     work_dir: Path,
     llm: LLMClient | None = None,
     plateau_patience: int = 2,
-    objective: str = "rubric",
+    objective: str = "pgr",
     project_dir: Path = Path("./projects"),
     write_iteration_summaries: bool = True,
 ) -> OptimizationResult:
@@ -233,10 +233,18 @@ async def optimize_project(
         4. Apply a targeted config adjustment
         5. Record the trace
 
-    `objective="rubric"` (default) uses project-level rubric mean for plateau
-    detection. `objective="pgr"` uses the PGR composite score — requires that
-    claims.md exists (run `rp project synthesize` first) so pgr_* metrics can
-    be computed each iteration.
+    `objective="pgr"` (default) uses the PGR composite score — citation-trace
+    verifiability + held-out evidence alignment + adversarial Red Team — as
+    the plateau signal. PGR is a Cross-Modal Anchor (verifies against source
+    chunks, a different modality than agent prose), avoiding the model-as-judge
+    co-evolutionary collapse that pure-rubric optimization is structurally
+    susceptible to (see project-15 findings, claims C2/C3). If claims.md is
+    missing on the first iteration, synthesize is run automatically.
+
+    `objective="rubric"` falls back to project-level rubric mean for plateau
+    detection. Faster (no PGR scoring per iteration), but the rubric is itself
+    model-as-judge and shares the generator's training distribution — use only
+    for fast iteration / smoke-tests, or when claims aren't worth the synth cost.
 
     Terminates on plateau (no single-dim improvement above threshold for
     `plateau_patience` consecutive iterations) or iteration cap.

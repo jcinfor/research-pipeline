@@ -1050,8 +1050,12 @@ def project_optimize(
     iterations: int = typer.Option(3, "--iterations"),
     turns_per: int = typer.Option(2, "--turns-per"),
     objective: str = typer.Option(
-        "rubric", "--objective",
-        help="Plateau-check against: 'rubric' (default) or 'pgr' composite.",
+        "pgr", "--objective",
+        help=(
+            "Plateau-check against: 'pgr' (default — Cross-Modal Anchor; "
+            "auto-synthesizes claims.md on first iteration if missing) or "
+            "'rubric' (faster, but model-as-judge; smoke-tests only)."
+        ),
     ),
     db_path: Path = typer.Option(Path("research_pipeline.db"), "--db"),
     work_dir: Path = typer.Option(Path("./runs"), "--work-dir"),
@@ -1060,9 +1064,14 @@ def project_optimize(
     """Run the optimization loop: short sim -> per-agent rubric ->
     targeted config adjustment -> re-run until plateau or iteration cap.
 
-    --objective pgr uses PGR composite (citation-trace + held-out) as the
-    plateau signal instead of the rubric mean. Requires claims.md; will
-    synthesize it if missing.
+    --objective pgr (default) uses PGR composite (citation-trace + held-out
+    evidence + adversarial Red Team) as the plateau signal — a Cross-Modal
+    Anchor that verifies against source chunks instead of model-as-judge.
+    Auto-synthesizes claims.md on the first iteration if missing.
+
+    --objective rubric falls back to project-level rubric mean. Faster (no
+    PGR scoring per iteration) but the rubric is itself model-as-judge in
+    the same training distribution; use only for smoke-tests / fast iter.
     """
     import asyncio
 

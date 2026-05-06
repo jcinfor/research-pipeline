@@ -34,7 +34,7 @@ The agent calls `rp_create_project`, `rp_ingest`, `rp_run_simulation`, `rp_get_s
 | Tool | What it does | Wall time |
 |---|---|---|
 | `rp_run_simulation` | Start a simulation. Args: `turns` (default 3), `reddit_every` (default 0). | 5-30 min |
-| `rp_run_optimize` | Start the optimization loop. Args: `iterations` (default 3), `turns_per` (default 2), `objective` (`'rubric'` or `'pgr'`), `plateau_patience` (default 2). | 10-60 min |
+| `rp_run_optimize` | Start the optimization loop. Args: `iterations` (default 3), `turns_per` (default 2), `objective` (`'pgr'` default — Cross-Modal Anchor, auto-synthesizes claims.md if missing; or `'rubric'` for the faster model-as-judge fallback), `plateau_patience` (default 2). | 10-60 min |
 | `rp_synthesize` | Produce the five structured artifacts (claims/hypotheses/experiments/decision/risks). | 1-3 min |
 
 **Concurrency invariant.** Only one active job per project at a time, regardless of kind. A simulation in flight blocks new submissions of optimize and synthesize too. Submitting a second job for the same project returns `{error: 'project_in_use', active_job_id, ...}` instead of a `job_id` — the agent should poll the active job's status, not stack submissions.

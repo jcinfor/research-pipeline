@@ -6,6 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
 ## [Unreleased]
 
+### Changed — `rp_run_optimize` / `rp project optimize` default objective: `rubric` → `pgr`
+
+The optimization loop now defaults to `objective="pgr"` (citation-trace + held-out evidence + adversarial Red Team) instead of `objective="rubric"`. Motivated by the project-15 self-learning research findings: the rubric objective is pure model-as-judge in the same training distribution as the agents being scored, structurally susceptible to the co-evolutionary collapse the matrix's claims C2/C3 warn about. PGR is a Cross-Modal Anchor — verifies against source-document chunks, a different modality than agent prose — which is the v3 architecture recommendation for verifier design.
+
+- The lazy-synthesize preflight was already in place: if `claims.md` is missing on the first PGR iteration, synthesize is run automatically. No behavior change there.
+- `objective="rubric"` is preserved as an explicit opt-in for smoke-tests / fast iteration where PGR's per-iteration scoring cost isn't worth it. Pass `--objective rubric` (CLI) or `objective="rubric"` (Python / MCP).
+- Affected surfaces: `optimize_project()` Python API, `rp_run_optimize` MCP tool, `rp project optimize` CLI. The Skill body and `docs/integrations/mcp-server.md` updated to recommend the new default.
+- See `docs/internal/findings-derived-prs.md` PR 1 for the full rationale and roll-out plan.
+
 ## [0.3.0] — 2026-05-06
 
 Closes the v0.3.0 plan from [docs/internal/rp-mcp-server-plan.md](docs/internal/rp-mcp-server-plan.md): the rp MCP server now exposes the **full pipeline** as MCP tools, with the long-running operations (simulation, optimize, synthesize) routed through an async job-id pattern that handles MCP client timeouts cleanly. The agent can now drive *ingest → run_simulation → run_optimize → synthesize → get_artifacts* without leaving the conversation, polling `rp_get_status` between async stages.

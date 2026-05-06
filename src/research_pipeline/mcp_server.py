@@ -370,7 +370,7 @@ def build_server() -> FastMCP:
         project_id: int,
         iterations: int = 3,
         turns_per: int = 2,
-        objective: str = "rubric",
+        objective: str = "pgr",
         plateau_patience: int = 2,
     ) -> dict[str, Any]:
         """Start the optimization loop as a background job. Each iteration:
@@ -392,9 +392,14 @@ def build_server() -> FastMCP:
           turns_per: simulation turns per iteration (default 2). Lower
             than rp_run_simulation's default because each iteration runs
             a complete simulation; cumulative cost grows fast.
-          objective: 'rubric' (default — uses project rubric mean for
-            plateau detection) or 'pgr' (uses PGR composite score —
-            requires claims.md to exist; run rp_synthesize first).
+          objective: 'pgr' (default) uses the PGR composite — citation-trace
+            verifiability + held-out evidence + adversarial Red Team — as
+            the plateau signal. Cross-Modal Anchor: verifies against source
+            chunks (different modality from agent prose). If claims.md is
+            missing on the first iteration, synthesize is run automatically.
+            'rubric' falls back to project-level rubric mean — faster but
+            the rubric is itself model-as-judge in the same training
+            distribution; use for smoke-tests or fast iteration.
           plateau_patience: consecutive iterations without single-dim
             improvement before terminating (default 2).
         """

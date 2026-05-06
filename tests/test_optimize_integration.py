@@ -86,10 +86,13 @@ def test_optimize_runs_two_iterations_and_adjusts_for_low_novelty(tmp_path: Path
         "research_pipeline.simulation.run_simulation", fake_run_simulation
     )
 
+    # This test pins the rubric-path lifecycle (weakest=novelty -> raise_temp).
+    # Pass objective="rubric" explicitly so the test stays stable independent
+    # of the function's default (flipped to "pgr" in the project-15 findings PR).
     result = asyncio.run(
         optimize_project(
             project_id=pid, iterations=2, turns_per=1,
-            db_path=db, work_dir=work_dir,
+            db_path=db, work_dir=work_dir, objective="rubric",
         )
     )
 

@@ -541,7 +541,7 @@ def _install_fast_optimize_stub(monkeypatch: pytest.MonkeyPatch) -> dict:
 
     async def fake_optimize(*, project_id, iterations, turns_per, db_path,
                             work_dir, llm=None, plateau_patience=2,
-                            objective="rubric", project_dir, **kwargs):
+                            objective="pgr", project_dir, **kwargs):
         captured["called"] = True
         captured["project_id"] = project_id
         captured["iterations"] = iterations
