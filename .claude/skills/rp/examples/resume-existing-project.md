@@ -60,16 +60,22 @@ Default: ask the user briefly which they want. *"Adding m_flow as a fourth voice
 ### 5. Run whichever path the user picked
 
 For re-run:
-```bash
-uv run rp project run 7 --turns 2 --reddit-every 2
+```
+rp_run_simulation(project_id=7, turns=2, reddit_every=2)
+→ {job_id: "...", kind: "simulation", status: "queued", ...}
 ```
 
-(Two turns is usually enough for a follow-up; three was for the original baseline.)
+(Two turns is usually enough for a follow-up; three was for the original baseline.) Then poll `rp_get_status(project_id=7)` per the cadence in SKILL.md — first check at ~30s, then every 60-120s, until `active_job` is null and the simulation appears in `recent_jobs` with `status: "complete"`.
 
 For just re-synthesize:
-```bash
-uv run rp project synthesize 7
 ```
+rp_synthesize(project_id=7)
+→ {job_id: "...", kind: "synthesize", status: "queued", ...}
+```
+
+1-3 minutes; same polling pattern.
+
+**Sequencing note.** The two are mutually exclusive within one project at a time — concurrency-forbid. If the user picks "rerun simulation," wait for it to complete before submitting `rp_synthesize`. If you submit `rp_synthesize` while the simulation is running, you'll get back `{error: 'project_in_use', active_job_id, ...}`; that's the signal to wait.
 
 ### 6. Fetch the updated artifacts
 

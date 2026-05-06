@@ -53,21 +53,38 @@ rp_ingest(project_id=9, path="/home/user/Downloads/supermemory-paper.pdf")
 
 ### 5. Run the simulation
 
-This is currently a CLI step (v0.2.0; phase-2 will expose it as `rp_run_simulation`):
+v0.3.0 ships this as an MCP tool. Submit:
 
-```bash
-uv run rp project run 9 --turns 3 --reddit-every 2
+```
+rp_run_simulation(project_id=9, turns=3, reddit_every=2)
+→ {job_id: "...", project_id: 9, kind: "simulation", status: "queued",
+   args: {turns: 3, reddit_every: 2},
+   hint: "poll rp_get_status(project_id) until active_job.status == 'complete'"}
 ```
 
-Stream the output. The simulation typically takes 5-30 min on the user's local stack. Each turn produces Twitter-style posts from the agents and Reddit-style threaded discussions every 2 turns. Don't interrupt unless the user asks.
+Now you wait. The simulation typically takes 5-30 min on the user's local stack. **Don't busy-loop.** Tell the user the job's submitted and they're free to step away. First status check ~30s in, then every 60-120s, surfacing only meaningful transitions:
+
+```
+rp_get_status(project_id=9)
+→ {..., active_job: {job_id: "...", status: "running",
+                     current_step: "running simulation (3 turns)",
+                     progress_pct: 5.0, ...}, recent_jobs: [...]}
+```
+
+When `active_job` becomes `null` and the simulation appears in `recent_jobs` with `status: "complete"`, you're done — proceed to step 6.
+
+If `recent_jobs` shows `status: "failed"`, surface the `error` field verbatim. Offer to re-submit (the failed job no longer counts as active, so a new `rp_run_simulation` is allowed).
 
 ### 6. Synthesize
 
-```bash
-uv run rp project synthesize 9
+Same async pattern:
+
+```
+rp_synthesize(project_id=9)
+→ {job_id: "...", kind: "synthesize", status: "queued", ...}
 ```
 
-1-3 minutes. Produces five `.md` files under `projects/project_9/artifacts/`.
+1-3 minutes. Poll the same way. Produces five `.md` files under `projects/project_9/artifacts/` once complete.
 
 ### 7. Fetch the artifacts
 
@@ -112,3 +129,5 @@ Don't dump all five inline. Use the pattern from SKILL.md:
 - ❌ Don't skip the simulation step. Without it, `rp_get_artifacts` returns mostly empty (only `hypotheses.md` is mechanical from the blackboard).
 - ❌ Don't paste the entire `claims.md` into chat. It's 14+ claims; the user wants the synthesis, not the raw output.
 - ❌ Don't forget to tell the user *where the files live*. They might want to git-track the artifacts or share them.
+- ❌ Don't poll `rp_get_status` in a tight loop within a single response. The cadence is across conversation turns: 30s first check, then 60-120s intervals. Tell the user the job is submitted and they can step away.
+- ❌ Don't try to call `rp_run_simulation` and `rp_synthesize` back-to-back without polling — the second submission returns `{error: 'project_in_use'}` because only one active job per project is allowed.

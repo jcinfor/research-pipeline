@@ -37,8 +37,10 @@ A useful test: would the user benefit from `claims.md`, `hypotheses.md`, `experi
 
 This skill works in **two modes**, depending on whether the user has registered rp's MCP server:
 
-- **MCP mode (preferred when available).** If `rp mcp serve` is registered with the user's MCP client (Claude Code, Cursor, Cline, etc.), call the structured `mcp__rp__rp_*` tools directly: `rp_list_projects`, `rp_create_project`, `rp_ingest`, `rp_get_status`, `rp_get_artifacts`. Faster, structured returns, fewer parsing errors.
-- **Shell-fallback mode.** If the MCP server isn't registered, fall back to `uv run rp project ...` via Bash. The CLI surface mirrors the MCP tool surface 1:1, so the workflow is identical — only the invocation form changes.
+- **MCP mode (preferred — required for async tools).** If `rp mcp serve` is registered with the user's MCP client (Claude Code, Cursor, Cline, etc.), call the structured `mcp__rp__rp_*` tools directly. v0.3.0 ships **8 tools**:
+  - Sync (return immediately): `rp_list_projects`, `rp_create_project`, `rp_ingest`, `rp_get_status`, `rp_get_artifacts`
+  - Async (return job_id; poll via `rp_get_status`): `rp_run_simulation`, `rp_run_optimize`, `rp_synthesize`
+- **Shell-fallback mode** (sync ops only). If the MCP server isn't registered, the **5 sync MCP ops have a 1:1 CLI mirror** — `uv run rp project create / ingest / list / status` plus the `rp_get_artifacts` equivalent (read files from `projects/project_<id>/artifacts/`). For the async ops there's a CLI mirror too (`uv run rp project run / optimize / synthesize`), but it runs sync (blocks until done) and you can't use the job-id polling pattern. **Strongly prefer MCP mode for the async ops** — without it, a 30-min simulation blocks the agent's response stream completely.
 
 Tool permission for either mode is the user's responsibility — Claude Code will prompt on first use, or the user can pre-approve in `.claude/settings.local.json` (e.g. `mcp__rp__*` for the MCP tools, `Bash(uv run rp *)` for shell fallback). This skill doesn't (and can't) grant permissions itself.
 
@@ -71,23 +73,25 @@ Before invoking the workflow, confirm:
 
 3. **Ingest documents** (`rp_ingest`) one at a time, providing absolute paths. Each ingest typically takes 5-30s — converts → chunks → embeds → adds to the project blackboard as evidence entries. The user usually has files in `/tmp/`, their Downloads, or a project directory they've mentioned. *Don't* try to ingest files you can't see; ask them for paths.
 
-4. **Run the simulation** — for now (v0.2.0), **this is a CLI step**, not an MCP tool. Run:
-   ```bash
-   uv run rp project run <project_id> --turns 3 --reddit-every 2
-   ```
-   `--turns 3` is a good default for a substantive question. `--turns 1` is the smoke-test default. The simulation typically takes 5-30 minutes depending on stack speed and document count. Stream output so the user can see progress.
+4. **Run the simulation** (`rp_run_simulation`) — submits a background job and returns `{job_id, status: 'queued'}` immediately. Defaults: `turns=3` (substantive), `reddit_every=0` (off; pass 2 if the user wants threaded discussion every other turn). The simulation typically takes 5-30 minutes depending on stack speed and document count. **Do not block the conversation polling in a tight loop** — see the *"Polling cadence for async tools"* section below for the right rhythm.
 
-   *Phase-2 will expose this as `rp_run_simulation` (async, returns job_id, polls via `rp_get_status`). Until then, CLI fallback.*
+5. **Optionally run the optimization loop** (`rp_run_optimize`) — only if the user explicitly asks for refinement, or if the simulation result's per-agent rubric flagged weak agents. Defaults: `iterations=3`, `turns_per=2`, `objective='rubric'`. Same async pattern as `rp_run_simulation`. **Concurrency: only one active job per project**, so you cannot start an optimize job while a simulation is still running — the tool will return `{error: 'project_in_use', active_job_id, hint}` if you try.
 
-5. **Optionally run the optimization loop** — only if the user explicitly asks for refinement, or if the per-agent rubric in the simulation output flagged weak agents. `uv run rp project optimize <project_id> --iterations 3 --turns-per 2` runs targeted re-tuning.
+6. **Synthesize the artifacts** (`rp_synthesize`) — same async pattern. Single arg: `project_id`. Synthesis runs against whatever's currently on the blackboard (so if you skipped the simulation, artifacts will be sparse but still produced). Typical run: 1-3 minutes.
 
-6. **Synthesize the artifacts** — also CLI for v0.2.0:
-   ```bash
-   uv run rp project synthesize <project_id>
-   ```
-   Produces the five `.md` files under `projects/project_<id>/artifacts/`. Takes 1-3 minutes.
+7. **Fetch the artifacts** (`rp_get_artifacts`) — sync, returns inline content keyed by name. Only call this *after* `rp_synthesize` has completed (i.e. `active_job` for that synthesize is null and `recent_jobs` shows it as `complete`). Now you have the hypothesis matrix.
 
-7. **Fetch the artifacts** (`rp_get_artifacts`) — returns inline content keyed by name. Now you have the hypothesis matrix.
+### Polling cadence for async tools
+
+After submitting `rp_run_simulation` / `rp_run_optimize` / `rp_synthesize`, the agent's job is to wait gracefully — not to spam `rp_get_status` and not to leave the user wondering what's happening.
+
+- **First check at ~30 seconds.** Anything sooner is wasted; the job hasn't moved past `queued` → `running` yet, and your tool calls cost the user tokens.
+- **Then every 60-120 seconds** until terminal. Don't tighter than 60s. Tell the user the job is in flight and they're free to step away.
+- **Surface meaningful transitions only.** When `active_job.status` changes (queued → running, running → complete, anything → failed), update the user. Steady-state "still running" doesn't need narration.
+- **If the user sends a message while a job is running**, check status as part of your response. If still running, mention it briefly; if complete since their last message, lead with the result.
+- **If `active_job.status == 'failed'`**, surface the `error` field verbatim and offer to investigate or re-submit. Don't paraphrase the error — the user (and you, on retry) need the literal message.
+- **If `active_job.status == 'orphaned'`** (the server restarted mid-job), tell the user the job got interrupted and ask whether to re-submit. Don't re-submit silently.
+- **Don't busy-loop.** If you find yourself calling `rp_get_status` in a `while True:` pattern within a single response turn, you're doing it wrong — the polling rhythm should be across conversation turns, not within them.
 
 ## How to present the artifacts
 
@@ -105,15 +109,13 @@ A good closing pattern: *"This is the rp output, condensed. The full claims.md h
 ## Edge cases to handle
 
 - **No project exists** — if `rp_list_projects` returns empty, you almost certainly need to create one. Don't ask the user to do it.
+- **An async job is already running on a project** — `rp_run_simulation` / `rp_run_optimize` / `rp_synthesize` returns `{error: 'project_in_use', active_job_id, ...}` instead of a new `job_id`. Don't retry; poll the existing job via `rp_get_status` and report progress to the user.
 - **Ingest fails on a file** — usually models.toml issues. The error message will say so. Tell the user, don't retry blindly.
-- **Simulation fails partway** — the project is left in a partial state. `rp_get_status` shows the blackboard state. You can re-run the simulation from where it stopped, or synthesize from what's there.
+- **Simulation fails partway** — the project's most-recent simulation job will show `status='failed'` in `rp_get_status`'s `recent_jobs` with the error in the `error` field. The project's blackboard keeps whatever was written before the failure. Surface the error verbatim, offer to re-submit (`rp_run_simulation` again — the prior failed job no longer counts as active, so re-submission is allowed) or synthesize from the partial state.
+- **Async job got orphaned** — if `rp_get_status` shows a job with `status='orphaned'`, that means the MCP server restarted while the job was running. The work is gone; ask the user before re-submitting.
 - **Synthesize fails** — the file generation falls back to stubs that explain the failure. Surface those — don't pretend.
 - **Artifacts already exist when starting** — if the user has an existing project with artifacts, don't blow away their work. Offer to resume, re-run, or start fresh.
 - **User asks about a paper that's not ingested** — ingest first, then run, then answer. Don't try to summarize a paper from filename alone.
-
-## Phase-2 features (coming, not yet shipped)
-
-When `rp_run_simulation`, `rp_run_optimize`, and `rp_synthesize` ship as MCP tools (v0.3.0), update the workflow to skip the CLI steps and use these directly with the job-id polling pattern. For now, CLI fallback covers it.
 
 ## Examples
 
