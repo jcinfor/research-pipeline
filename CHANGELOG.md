@@ -6,7 +6,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
 ## [Unreleased]
 
-## [0.3.0] — TBD
+## [0.3.0] — 2026-05-06
 
 Closes the v0.3.0 plan from [docs/internal/rp-mcp-server-plan.md](docs/internal/rp-mcp-server-plan.md): the rp MCP server now exposes the **full pipeline** as MCP tools, with the long-running operations (simulation, optimize, synthesize) routed through an async job-id pattern that handles MCP client timeouts cleanly. The agent can now drive *ingest → run_simulation → run_optimize → synthesize → get_artifacts* without leaving the conversation, polling `rp_get_status` between async stages.
 
